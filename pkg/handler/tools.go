@@ -1,0 +1,148 @@
+package handler
+
+import (
+	"encoding/json"
+
+	"github.com/gomcpgo/mcp/pkg/protocol"
+)
+
+// GetTools returns the list of available tools
+func GetTools() []protocol.Tool {
+	return []protocol.Tool{
+		{
+			Name:        "list_folders",
+			Description: "List all available email folders/labels with message counts",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {},
+				"required": []
+			}`),
+		},
+		{
+			Name:        "fetch_email_headers",
+			Description: "Fetch email headers (metadata) without bodies. Use this to list emails before fetching full content. Be mindful of the limit parameter as fetching many emails uses memory.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"folder": {
+						"type": "string",
+						"description": "Email folder to fetch from (e.g., 'INBOX', 'Sent'). Default: INBOX"
+					},
+					"since_date": {
+						"type": "string",
+						"description": "Fetch emails since this date (ISO format: 2024-01-20)"
+					},
+					"until_date": {
+						"type": "string",
+						"description": "Fetch emails until this date (ISO format: 2024-01-27)"
+					},
+					"from": {
+						"type": "string",
+						"description": "Filter by sender email address"
+					},
+					"subject_contains": {
+						"type": "string",
+						"description": "Filter by subject containing this text"
+					},
+					"unread_only": {
+						"type": "boolean",
+						"description": "Only fetch unread emails. Default: false"
+					},
+					"limit": {
+						"type": "integer",
+						"description": "Maximum number of emails to fetch. Be mindful of memory usage. Default: 50"
+					}
+				},
+				"required": []
+			}`),
+		},
+		{
+			Name:        "fetch_email",
+			Description: "Fetch a complete email with body and attachment list using its Message-ID",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"message_id": {
+						"type": "string",
+						"description": "The Message-ID header value (e.g., '<CADsK8=example@mail.gmail.com>')"
+					}
+				},
+				"required": ["message_id"]
+			}`),
+		},
+		{
+			Name:        "send_email",
+			Description: "Send an email. Properly sets threading headers for replies.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Recipient email addresses"
+					},
+					"cc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "CC recipient email addresses"
+					},
+					"bcc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "BCC recipient email addresses (hidden from other recipients)"
+					},
+					"subject": {
+						"type": "string",
+						"description": "Email subject line"
+					},
+					"body": {
+						"type": "string",
+						"description": "Plain text email body"
+					},
+					"html_body": {
+						"type": "string",
+						"description": "HTML email body (optional)"
+					},
+					"attachments": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Cache IDs of attachments to include (from fetch_email_attachment)"
+					},
+					"reply_to_message_id": {
+						"type": "string",
+						"description": "Message-ID of email being replied to (for threading)"
+					},
+					"references": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Message-IDs for threading chain"
+					}
+				},
+				"required": ["to", "subject"]
+			}`),
+		},
+		{
+			Name:        "fetch_email_attachment",
+			Description: "Fetch attachments from an email. Files are saved to cache for use with send_email. Maximum attachment size: 25MB.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"message_id": {
+						"type": "string",
+						"description": "The Message-ID header value of the email"
+					},
+					"attachment_names": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Specific attachment filenames to fetch (e.g., ['report.pdf', 'image.png'])"
+					},
+					"fetch_all": {
+						"type": "boolean",
+						"description": "Fetch all attachments from the email. Default: false"
+					}
+				},
+				"required": ["message_id"]
+			}`),
+		},
+	}
+}
