@@ -47,16 +47,9 @@ func LoadConfig() (*Config, error) {
 		FilesRoot:         "/tmp/email-mcp",
 	}
 
-	// Required email account settings
+	// Email account settings (optional at startup)
 	cfg.EmailAddress = os.Getenv("EMAIL_ADDRESS")
-	if cfg.EmailAddress == "" {
-		return nil, fmt.Errorf("EMAIL_ADDRESS environment variable is required")
-	}
-
 	cfg.EmailPassword = os.Getenv("EMAIL_APP_PASSWORD")
-	if cfg.EmailPassword == "" {
-		return nil, fmt.Errorf("EMAIL_APP_PASSWORD environment variable is required")
-	}
 
 	// Provider
 	if provider := os.Getenv("EMAIL_PROVIDER"); provider != "" {
@@ -160,19 +153,36 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
-// Validate checks if configuration is valid
-func (c *Config) Validate() error {
+// IsConfigured checks if email credentials are available
+func (c *Config) IsConfigured() bool {
+	return c.EmailAddress != "" && c.EmailPassword != ""
+}
+
+// ValidateForOperation checks if configuration is valid for email operations
+func (c *Config) ValidateForOperation() error {
 	if c.EmailAddress == "" {
-		return fmt.Errorf("email address is required")
+		return fmt.Errorf("email not configured: EMAIL_ADDRESS environment variable is required")
 	}
 	if c.EmailPassword == "" {
-		return fmt.Errorf("email password is required")
+		return fmt.Errorf("email not configured: EMAIL_APP_PASSWORD environment variable is required")
 	}
 	if c.IMAPServer == "" || c.IMAPPort == 0 {
 		return fmt.Errorf("IMAP server configuration is incomplete")
 	}
 	if c.SMTPServer == "" || c.SMTPPort == 0 {
 		return fmt.Errorf("SMTP server configuration is incomplete")
+	}
+	return nil
+}
+
+// Validate checks if basic configuration is valid (used for startup)
+func (c *Config) Validate() error {
+	// Only validate non-email settings at startup
+	if c.CacheMaxSize <= 0 {
+		return fmt.Errorf("invalid cache size")
+	}
+	if c.TimeoutSeconds <= 0 {
+		return fmt.Errorf("invalid timeout")
 	}
 	return nil
 }

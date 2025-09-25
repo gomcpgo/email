@@ -13,29 +13,62 @@ import (
 // Handler handles MCP protocol operations
 type Handler struct {
 	config        *config.Config
-	imapClient    *email.IMAPClient
-	smtpClient    *email.SMTPClient
-	attFetcher    *email.AttachmentFetcher
+	imapClient    *email.IMAPClient    // Lazy-initialized
+	smtpClient    *email.SMTPClient    // Lazy-initialized
+	attFetcher    *email.AttachmentFetcher // Lazy-initialized
 	storage       *storage.Storage
 	cacheManager  *storage.CacheManager
 }
 
 // NewHandler creates a new handler instance
 func NewHandler(cfg *config.Config) (*Handler, error) {
-	imapClient := email.NewIMAPClient(cfg)
-	smtpClient := email.NewSMTPClient(cfg)
-	attFetcher := email.NewAttachmentFetcher(cfg, imapClient)
+	// Only create non-email clients at startup
 	stor := storage.NewStorage(cfg.FilesRoot, cfg.CacheMaxSize)
 	cacheManager := storage.NewCacheManager(cfg.FilesRoot, cfg.CacheMaxSize)
 
 	return &Handler{
 		config:       cfg,
-		imapClient:   imapClient,
-		smtpClient:   smtpClient,
-		attFetcher:   attFetcher,
 		storage:      stor,
 		cacheManager: cacheManager,
+		// Email clients are lazy-initialized on first use
 	}, nil
+}
+
+// getIMAPClient returns the IMAP client, initializing if necessary
+func (h *Handler) getIMAPClient() (*email.IMAPClient, error) {
+	if err := h.config.ValidateForOperation(); err != nil {
+		return nil, err
+	}
+	
+	if h.imapClient == nil {
+		h.imapClient = email.NewIMAPClient(h.config)
+	}
+	return h.imapClient, nil
+}
+
+// getSMTPClient returns the SMTP client, initializing if necessary
+func (h *Handler) getSMTPClient() (*email.SMTPClient, error) {
+	if err := h.config.ValidateForOperation(); err != nil {
+		return nil, err
+	}
+	
+	if h.smtpClient == nil {
+		h.smtpClient = email.NewSMTPClient(h.config)
+	}
+	return h.smtpClient, nil
+}
+
+// getAttachmentFetcher returns the attachment fetcher, initializing if necessary
+func (h *Handler) getAttachmentFetcher() (*email.AttachmentFetcher, error) {
+	imapClient, err := h.getIMAPClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	if h.attFetcher == nil {
+		h.attFetcher = email.NewAttachmentFetcher(h.config, imapClient)
+	}
+	return h.attFetcher, nil
 }
 
 // CallTool handles MCP tool calls

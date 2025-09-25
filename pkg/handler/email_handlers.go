@@ -12,7 +12,12 @@ import (
 
 // handleListFolders handles the list_folders tool
 func (h *Handler) handleListFolders(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
-	folders, err := h.imapClient.ListFolders()
+	imapClient, err := h.getIMAPClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	folders, err := imapClient.ListFolders()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list folders: %w", err)
 	}
@@ -81,7 +86,12 @@ func (h *Handler) handleFetchEmailHeaders(ctx context.Context, args map[string]i
 	}
 
 	// Fetch headers
-	headers, err := h.imapClient.FetchHeaders(opts)
+	imapClient, err := h.getIMAPClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	headers, err := imapClient.FetchHeaders(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch email headers: %w", err)
 	}
@@ -129,7 +139,12 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	}
 
 	// Not in cache, fetch from server
-	emailMsg, err := h.imapClient.FetchEmail(messageID)
+	imapClient, err := h.getIMAPClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	emailMsg, err := imapClient.FetchEmail(messageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch email: %w", err)
 	}
@@ -231,7 +246,12 @@ func (h *Handler) handleSendEmail(ctx context.Context, args map[string]interface
 	}
 
 	// Send the email
-	if err := h.smtpClient.SendEmail(opts); err != nil {
+	smtpClient, err := h.getSMTPClient()
+	if err != nil {
+		return nil, err
+	}
+	
+	if err := smtpClient.SendEmail(opts); err != nil {
 		return nil, fmt.Errorf("failed to send email: %w", err)
 	}
 
@@ -267,7 +287,12 @@ func (h *Handler) handleFetchEmailAttachment(ctx context.Context, args map[strin
 	}
 
 	// Fetch attachments
-	results, err := h.attFetcher.FetchAttachments(messageID, attachmentNames, fetchAll)
+	attFetcher, err := h.getAttachmentFetcher()
+	if err != nil {
+		return nil, err
+	}
+	
+	results, err := attFetcher.FetchAttachments(messageID, attachmentNames, fetchAll)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch attachments: %w", err)
 	}
