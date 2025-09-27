@@ -28,6 +28,8 @@ func main() {
 		cacheInfo       = flag.Bool("cache-info", false, "Show cache information")
 		clearCache      = flag.Bool("clear-cache", false, "Clear all cache")
 		debugMode       = flag.Bool("debug", false, "Enable debug mode")
+		toolName        = flag.String("tool", "", "Call a specific tool")
+		toolArgs        = flag.String("args", "{}", "Tool arguments as JSON")
 	)
 	flag.Parse()
 
@@ -39,9 +41,10 @@ func main() {
 
 	// Terminal mode operations
 	if *listFolders || *fetchHeaders != "" || *fetchEmail != "" || *sendTest || 
-	   *fetchAttachment != "" || *cacheInfo || *clearCache {
+	   *fetchAttachment != "" || *cacheInfo || *clearCache || *toolName != "" {
 		err := runTerminalMode(cfg, *listFolders, *fetchHeaders, *fetchEmail, 
-		                      *sendTest, *fetchAttachment, *cacheInfo, *clearCache, *debugMode)
+		                      *sendTest, *fetchAttachment, *cacheInfo, *clearCache, 
+		                      *debugMode, *toolName, *toolArgs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -58,7 +61,8 @@ func main() {
 
 // runTerminalMode executes terminal mode for CLI testing
 func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEmail string,
-	sendTest bool, fetchAttachment string, cacheInfo, clearCache, debugMode bool) error {
+	sendTest bool, fetchAttachment string, cacheInfo, clearCache, debugMode bool, 
+	toolName, toolArgs string) error {
 	
 	ctx := context.Background()
 	
@@ -194,6 +198,29 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 				"message_id": fetchAttachment,
 				"fetch_all":  true,
 			},
+		}
+		
+		resp, err := h.CallTool(ctx, req)
+		if err != nil {
+			return err
+		}
+		
+		if len(resp.Content) > 0 {
+			fmt.Println(resp.Content[0].Text)
+		}
+		return nil
+	}
+
+	// Generic tool invocation
+	if toolName != "" {
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
+			return fmt.Errorf("failed to parse tool arguments: %w", err)
+		}
+		
+		req := &protocol.CallToolRequest{
+			Name:      toolName,
+			Arguments: args,
 		}
 		
 		resp, err := h.CallTool(ctx, req)

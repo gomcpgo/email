@@ -84,6 +84,20 @@ func (h *Handler) CallTool(ctx context.Context, req *protocol.CallToolRequest) (
 		return h.handleSendEmail(ctx, req.Arguments)
 	case "fetch_email_attachment":
 		return h.handleFetchEmailAttachment(ctx, req.Arguments)
+	case "create_draft":
+		return h.handleCreateDraft(ctx, req.Arguments)
+	case "list_drafts":
+		return h.handleListDrafts(ctx, req.Arguments)
+	case "get_draft":
+		return h.handleGetDraft(ctx, req.Arguments)
+	case "update_draft":
+		return h.handleUpdateDraft(ctx, req.Arguments)
+	case "send_draft":
+		return h.handleSendDraft(ctx, req.Arguments)
+	case "delete_draft":
+		return h.handleDeleteDraft(ctx, req.Arguments)
+	case "send_all_drafts":
+		return h.handleSendAllDrafts(ctx, req.Arguments)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Name)
 	}
