@@ -166,6 +166,66 @@ case "$1" in
         echo "   • Use headers first, then fetch individual emails as needed"
         ;;
     
+    "create-draft")
+        echo "Creating a test draft..."
+        go run ./cmd -tool create_draft -args '{"to":["test@example.com"],"subject":"Test Draft","body":"This is a test draft email"}'
+        ;;
+    
+    "list-drafts")
+        echo "Listing all drafts..."
+        go run ./cmd -tool list_drafts -args '{}'
+        ;;
+    
+    "get-draft")
+        if [ -z "$2" ]; then
+            echo "Error: Draft ID required"
+            echo "Usage: $0 get-draft <draft-id>"
+            exit 1
+        fi
+        echo "Getting draft $2..."
+        go run ./cmd -tool get_draft -args "{\"draft_id\":\"$2\"}"
+        ;;
+    
+    "update-draft")
+        if [ -z "$2" ]; then
+            echo "Error: Draft ID required"
+            echo "Usage: $0 update-draft <draft-id>"
+            exit 1
+        fi
+        echo "Updating draft $2..."
+        go run ./cmd -tool update_draft -args "{\"draft_id\":\"$2\",\"subject\":\"Updated Subject\",\"body\":\"Updated body content\"}"
+        ;;
+    
+    "send-draft")
+        if [ -z "$2" ]; then
+            echo "Error: Draft ID required"
+            echo "Usage: $0 send-draft <draft-id>"
+            exit 1
+        fi
+        echo "Sending draft $2..."
+        go run ./cmd -tool send_draft -args "{\"draft_id\":\"$2\"}"
+        ;;
+    
+    "delete-draft")
+        if [ -z "$2" ]; then
+            echo "Error: Draft ID required"
+            echo "Usage: $0 delete-draft <draft-id>"
+            exit 1
+        fi
+        echo "Deleting draft $2..."
+        go run ./cmd -tool delete_draft -args "{\"draft_id\":\"$2\"}"
+        ;;
+    
+    "send-all-drafts")
+        echo "Sending all drafts with 5 second delay..."
+        go run ./cmd -tool send_all_drafts -args '{"delay_seconds":5}'
+        ;;
+    
+    "send-all-drafts-dry")
+        echo "Simulating send all drafts (dry run)..."
+        go run ./cmd -tool send_all_drafts -args '{"dry_run":true}'
+        ;;
+    
     "run")
         echo "Running Email MCP server..."
         go run ./cmd
@@ -195,6 +255,17 @@ case "$1" in
         echo "  compare-sizes  - Compare response sizes: headers vs full email"
         echo "  size-test <n>  - Test response sizes with n email headers"
         echo "  performance-guide - Show detailed performance recommendations"
+        echo ""
+        echo "  Draft Management:"
+        echo "  create-draft   - Create a new email draft"
+        echo "  list-drafts    - List all saved drafts"
+        echo "  get-draft <id> - Get a specific draft by ID"
+        echo "  update-draft <id> - Update an existing draft"
+        echo "  send-draft <id>   - Send a draft and delete it"
+        echo "  delete-draft <id> - Delete a draft without sending"
+        echo "  send-all-drafts   - Send all drafts with delay"
+        echo "  send-all-drafts-dry - Simulate sending all drafts"
+        echo ""
         echo "  run            - Run the MCP server"
         echo "  install        - Install Go dependencies"
         echo ""
@@ -205,5 +276,7 @@ case "$1" in
         echo "  ./run.sh attachment '<msg@ex.com>' # Fetch attachments"
         echo "  ./run.sh compare-sizes             # Compare header vs full email sizes"
         echo "  ./run.sh size-test 20              # Test response size with 20 emails"
+        echo "  ./run.sh create-draft              # Create a test draft"
+        echo "  ./run.sh send-draft 12345_abc      # Send draft with ID"
         ;;
 esac

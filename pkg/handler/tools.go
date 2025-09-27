@@ -144,5 +144,175 @@ func GetTools() []protocol.Tool {
 				"required": ["message_id"]
 			}`),
 		},
+		{
+			Name:        "create_draft",
+			Description: "Create a new email draft. Save an email composition for later sending or editing.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Recipient email addresses"
+					},
+					"cc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "CC recipient email addresses"
+					},
+					"bcc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "BCC recipient email addresses (hidden from other recipients)"
+					},
+					"subject": {
+						"type": "string",
+						"description": "Email subject line"
+					},
+					"body": {
+						"type": "string",
+						"description": "Plain text email body"
+					},
+					"html_body": {
+						"type": "string",
+						"description": "HTML email body (optional)"
+					},
+					"attachments": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Cache IDs of attachments to include"
+					},
+					"reply_to_message_id": {
+						"type": "string",
+						"description": "Message-ID of email being replied to (for threading)"
+					},
+					"references": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Message-IDs for threading chain"
+					}
+				},
+				"required": []
+			}`),
+		},
+		{
+			Name:        "list_drafts",
+			Description: "List all saved email drafts with their summaries",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {},
+				"required": []
+			}`),
+		},
+		{
+			Name:        "get_draft",
+			Description: "Retrieve a specific draft by its ID to view or edit",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"draft_id": {
+						"type": "string",
+						"description": "The ID of the draft to retrieve"
+					}
+				},
+				"required": ["draft_id"]
+			}`),
+		},
+		{
+			Name:        "update_draft",
+			Description: "Update an existing draft. Only provided fields will be updated.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"draft_id": {
+						"type": "string",
+						"description": "The ID of the draft to update"
+					},
+					"to": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Updated recipient email addresses"
+					},
+					"cc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Updated CC recipients"
+					},
+					"bcc": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Updated BCC recipients"
+					},
+					"subject": {
+						"type": "string",
+						"description": "Updated subject line"
+					},
+					"body": {
+						"type": "string",
+						"description": "Updated plain text body"
+					},
+					"html_body": {
+						"type": "string",
+						"description": "Updated HTML body"
+					},
+					"attachments": {
+						"type": "array",
+						"items": {"type": "string"},
+						"description": "Updated attachment cache IDs"
+					}
+				},
+				"required": ["draft_id"]
+			}`),
+		},
+		{
+			Name:        "send_draft",
+			Description: "Send a draft email and remove it from drafts storage",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"draft_id": {
+						"type": "string",
+						"description": "The ID of the draft to send"
+					}
+				},
+				"required": ["draft_id"]
+			}`),
+		},
+		{
+			Name:        "delete_draft",
+			Description: "Delete a draft without sending it",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"draft_id": {
+						"type": "string",
+						"description": "The ID of the draft to delete"
+					}
+				},
+				"required": ["draft_id"]
+			}`),
+		},
+		{
+			Name:        "send_all_drafts",
+			Description: "Send all drafts with a configurable delay between each email to avoid rate limits",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"delay_seconds": {
+						"type": "integer",
+						"description": "Seconds to wait between sending each email (2-60). Default: 5"
+					},
+					"dry_run": {
+						"type": "boolean",
+						"description": "If true, simulate sending without actually sending. Default: false"
+					},
+					"stop_on_error": {
+						"type": "boolean",
+						"description": "If true, stop sending if any email fails. Default: false"
+					}
+				},
+				"required": []
+			}`),
+		},
 	}
 }
