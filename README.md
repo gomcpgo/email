@@ -1,30 +1,66 @@
 # Email MCP Server
 
-A Model Context Protocol (MCP) server for email operations via IMAP and SMTP. Supports Gmail, Outlook, and other IMAP/SMTP servers.
+A Model Context Protocol (MCP) server for email operations via IMAP and SMTP. Supports Gmail, Outlook, and other IMAP/SMTP servers with multi-account support.
 
 ## Features
 
+- **Multi-account support** - Manage multiple email accounts simultaneously
 - **List email folders** - Enumerate all available folders/labels
 - **Fetch email headers** - Get email metadata without downloading full content
 - **Fetch complete emails** - Download full email with body and attachments
 - **Send emails** - Send emails with proper threading support for replies
 - **Fetch attachments** - Download and cache email attachments
+- **Draft management** - Create, edit, and manage email drafts
+
+## Multi-Account Support
+
+The server supports managing multiple email accounts. Each account has its own:
+- Isolated storage (drafts, cache, attachments)
+- Independent IMAP/SMTP configurations
+- Provider-specific auto-configuration (Gmail, Outlook)
+
+All MCP tools accept an optional `account_id` parameter. If not specified, the default account (configured via `DEFAULT_ACCOUNT_ID`) is used.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure your email settings:
+### Multi-Account Configuration
+
+Copy `.env.example` to `.env` and configure your accounts:
 
 ```bash
-# Email account settings
-EMAIL_ADDRESS=your-email@gmail.com
-EMAIL_APP_PASSWORD=your-app-password
-EMAIL_PROVIDER=gmail              # gmail, outlook, or custom
+# Set the default account
+DEFAULT_ACCOUNT_ID=work
 
-# Storage settings
-FILES_ROOT=/path/to/storage       # Root for drafts and cache
-EMAIL_CACHE_MAX_SIZE=10485760     # 10MB cache limit
-EMAIL_MAX_ATTACHMENT_SIZE=26214400 # 25MB max attachment
+# Account 1: Work Email (Gmail)
+ACCOUNT_work_EMAIL=work@company.com
+ACCOUNT_work_PASSWORD=your_app_password_here
+ACCOUNT_work_PROVIDER=gmail
+
+# Account 2: Personal Email (Gmail)
+ACCOUNT_personal_EMAIL=me@gmail.com
+ACCOUNT_personal_PASSWORD=your_app_password_here
+ACCOUNT_personal_PROVIDER=gmail
+
+# Account 3: Custom Email Server
+ACCOUNT_custom_EMAIL=user@custom-domain.com
+ACCOUNT_custom_PASSWORD=your_password_here
+ACCOUNT_custom_PROVIDER=custom
+ACCOUNT_custom_IMAP_SERVER=mail.custom-domain.com
+ACCOUNT_custom_IMAP_PORT=993
+ACCOUNT_custom_SMTP_SERVER=mail.custom-domain.com
+ACCOUNT_custom_SMTP_PORT=587
+
+# Global storage settings
+FILES_ROOT=/tmp/email-mcp              # Root directory for all accounts
+EMAIL_CACHE_MAX_SIZE=10485760          # 10MB cache limit per account
+EMAIL_MAX_ATTACHMENT_SIZE=26214400     # 25MB max attachment size
 ```
+
+### Account Naming
+
+- Account IDs can be any alphanumeric string (e.g., `work`, `personal`, `client1`)
+- Use the pattern `ACCOUNT_{account_id}_{SETTING}` for all account-specific settings
+- Each account's data is stored in `FILES_ROOT/{account_id}/`
 
 ### Gmail Setup
 
@@ -86,11 +122,23 @@ EMAIL_MAX_ATTACHMENT_SIZE=26214400 # 25MB max attachment
 
 ## MCP Tools
 
+**Note:** All tools accept an optional `account_id` parameter to specify which account to use. If omitted, the default account (configured via `DEFAULT_ACCOUNT_ID`) is used.
+
+Example with account selection:
+```json
+{
+  "account_id": "work",
+  // ... other parameters
+}
+```
+
 ### list_folders
 Lists all available email folders with message counts.
 
 ```json
-{}
+{
+  "account_id": "work"  // Optional: defaults to DEFAULT_ACCOUNT_ID
+}
 ```
 
 ### fetch_email_headers

@@ -10,65 +10,130 @@ import (
 	"github.com/prasanthmj/email/pkg/storage"
 )
 
+// AccountClients holds per-account client instances
+type AccountClients struct {
+	imapClient   *email.IMAPClient
+	smtpClient   *email.SMTPClient
+	attFetcher   *email.AttachmentFetcher
+	storage      *storage.Storage
+	cacheManager *storage.CacheManager
+}
+
 // Handler handles MCP protocol operations
 type Handler struct {
-	config        *config.Config
-	imapClient    *email.IMAPClient    // Lazy-initialized
-	smtpClient    *email.SMTPClient    // Lazy-initialized
-	attFetcher    *email.AttachmentFetcher // Lazy-initialized
-	storage       *storage.Storage
-	cacheManager  *storage.CacheManager
+	config  *config.MultiAccountConfig
+	clients map[string]*AccountClients // Per-account clients (lazy-initialized)
 }
 
 // NewHandler creates a new handler instance
-func NewHandler(cfg *config.Config) (*Handler, error) {
-	// Only create non-email clients at startup
-	stor := storage.NewStorage(cfg.FilesRoot, cfg.CacheMaxSize)
-	cacheManager := storage.NewCacheManager(cfg.FilesRoot, cfg.CacheMaxSize)
-
+func NewHandler(cfg *config.MultiAccountConfig) (*Handler, error) {
 	return &Handler{
-		config:       cfg,
-		storage:      stor,
-		cacheManager: cacheManager,
-		// Email clients are lazy-initialized on first use
+		config:  cfg,
+		clients: make(map[string]*AccountClients),
 	}, nil
 }
 
-// getIMAPClient returns the IMAP client, initializing if necessary
-func (h *Handler) getIMAPClient() (*email.IMAPClient, error) {
-	if err := h.config.ValidateForOperation(); err != nil {
-		return nil, err
+// resolveAccountID returns the actual account ID to use (default if empty)
+func (h *Handler) resolveAccountID(requestedID string) string {
+	if requestedID == "" {
+		return h.config.DefaultAccountID
 	}
-	
-	if h.imapClient == nil {
-		h.imapClient = email.NewIMAPClient(h.config)
-	}
-	return h.imapClient, nil
+	return requestedID
 }
 
-// getSMTPClient returns the SMTP client, initializing if necessary
-func (h *Handler) getSMTPClient() (*email.SMTPClient, error) {
-	if err := h.config.ValidateForOperation(); err != nil {
-		return nil, err
+// getAccountClients returns or creates the account clients for the given account ID
+func (h *Handler) getAccountClients(accountID string) (*AccountClients, *config.AccountConfig, error) {
+	accountID = h.resolveAccountID(accountID)
+
+	// Get account config
+	acctCfg, err := h.config.GetAccount(accountID)
+	if err != nil {
+		return nil, nil, err
 	}
-	
-	if h.smtpClient == nil {
-		h.smtpClient = email.NewSMTPClient(h.config)
+
+	// Check if clients already exist
+	if clients, ok := h.clients[accountID]; ok {
+		return clients, acctCfg, nil
 	}
-	return h.smtpClient, nil
+
+	// Create new clients for this account
+	clients := &AccountClients{
+		storage:      storage.NewStorage(acctCfg.DraftsDir[:len(acctCfg.DraftsDir)-len("/drafts")], h.config.CacheMaxSize),
+		cacheManager: storage.NewCacheManager(acctCfg.DraftsDir[:len(acctCfg.DraftsDir)-len("/drafts")], h.config.CacheMaxSize),
+	}
+
+	h.clients[accountID] = clients
+	return clients, acctCfg, nil
 }
 
-// getAttachmentFetcher returns the attachment fetcher, initializing if necessary
-func (h *Handler) getAttachmentFetcher() (*email.AttachmentFetcher, error) {
-	imapClient, err := h.getIMAPClient()
+// getIMAPClient returns the IMAP client for the account, initializing if necessary
+func (h *Handler) getIMAPClient(accountID string) (*email.IMAPClient, error) {
+	clients, acctCfg, err := h.getAccountClients(accountID)
 	if err != nil {
 		return nil, err
 	}
-	
-	if h.attFetcher == nil {
-		h.attFetcher = email.NewAttachmentFetcher(h.config, imapClient)
+
+	if err := acctCfg.ValidateForOperation(); err != nil {
+		return nil, err
 	}
-	return h.attFetcher, nil
+
+	if clients.imapClient == nil {
+		clients.imapClient = email.NewIMAPClient(acctCfg)
+	}
+	return clients.imapClient, nil
+}
+
+// getSMTPClient returns the SMTP client for the account, initializing if necessary
+func (h *Handler) getSMTPClient(accountID string) (*email.SMTPClient, error) {
+	clients, acctCfg, err := h.getAccountClients(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := acctCfg.ValidateForOperation(); err != nil {
+		return nil, err
+	}
+
+	if clients.smtpClient == nil {
+		clients.smtpClient = email.NewSMTPClient(acctCfg)
+	}
+	return clients.smtpClient, nil
+}
+
+// getAttachmentFetcher returns the attachment fetcher for the account, initializing if necessary
+func (h *Handler) getAttachmentFetcher(accountID string) (*email.AttachmentFetcher, error) {
+	clients, acctCfg, err := h.getAccountClients(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	imapClient, err := h.getIMAPClient(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if clients.attFetcher == nil {
+		clients.attFetcher = email.NewAttachmentFetcher(acctCfg, imapClient)
+	}
+	return clients.attFetcher, nil
+}
+
+// getStorage returns the storage for the account
+func (h *Handler) getStorage(accountID string) (*storage.Storage, error) {
+	clients, _, err := h.getAccountClients(accountID)
+	if err != nil {
+		return nil, err
+	}
+	return clients.storage, nil
+}
+
+// getCacheManager returns the cache manager for the account
+func (h *Handler) getCacheManager(accountID string) (*storage.CacheManager, error) {
+	clients, _, err := h.getAccountClients(accountID)
+	if err != nil {
+		return nil, err
+	}
+	return clients.cacheManager, nil
 }
 
 // CallTool handles MCP tool calls

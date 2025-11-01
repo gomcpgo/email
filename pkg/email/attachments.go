@@ -16,12 +16,12 @@ import (
 
 // AttachmentFetcher handles attachment operations
 type AttachmentFetcher struct {
-	config     *config.Config
+	config     *config.AccountConfig
 	imapClient *IMAPClient
 }
 
 // NewAttachmentFetcher creates a new attachment fetcher
-func NewAttachmentFetcher(cfg *config.Config, imapClient *IMAPClient) *AttachmentFetcher {
+func NewAttachmentFetcher(cfg *config.AccountConfig, imapClient *IMAPClient) *AttachmentFetcher {
 	return &AttachmentFetcher{
 		config:     cfg,
 		imapClient: imapClient,

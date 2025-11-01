@@ -14,7 +14,12 @@ func GetTools() []protocol.Tool {
 			Description: "List all available email folders/labels with message counts",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
-				"properties": {},
+				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					}
+				},
 				"required": []
 			}`),
 		},
@@ -24,6 +29,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"folder": {
 						"type": "string",
 						"description": "Email folder to fetch from (e.g., 'INBOX', 'Sent'). Default: INBOX"
@@ -62,6 +71,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"message_id": {
 						"type": "string",
 						"description": "The Message-ID header value (e.g., '<CADsK8=example@mail.gmail.com>')"
@@ -76,6 +89,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"to": {
 						"type": "array",
 						"items": {"type": "string"},
@@ -127,6 +144,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"message_id": {
 						"type": "string",
 						"description": "The Message-ID header value of the email"
@@ -150,6 +171,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"to": {
 						"type": "array",
 						"items": {"type": "string"},
@@ -200,7 +225,12 @@ func GetTools() []protocol.Tool {
 			Description: "List all saved email drafts with their summaries",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
-				"properties": {},
+				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					}
+				},
 				"required": []
 			}`),
 		},
@@ -210,6 +240,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to retrieve"
@@ -224,6 +258,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to update"
@@ -270,6 +308,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to send"
@@ -284,6 +326,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to delete"
@@ -298,6 +344,10 @@ func GetTools() []protocol.Tool {
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"delay_seconds": {
 						"type": "integer",
 						"description": "Seconds to wait between sending each email (2-60). Default: 5"

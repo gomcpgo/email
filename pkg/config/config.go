@@ -5,10 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
-type Config struct {
+// AccountConfig represents configuration for a single email account
+type AccountConfig struct {
+	// Account identification
+	AccountID string
+
 	// Email account
 	EmailAddress  string
 	EmailPassword string
@@ -18,81 +23,44 @@ type Config struct {
 	IMAPServer string
 	IMAPPort   int
 
-	// SMTP settings  
+	// SMTP settings
 	SMTPServer string
 	SMTPPort   int
 
-	// Storage settings
-	FilesRoot           string
-	CacheMaxSize        int64
-	MaxAttachmentSize   int64
-	TimeoutSeconds      int
-	Timeout             time.Duration
+	// Timeout settings
+	TimeoutSeconds int
+	Timeout        time.Duration
 
-	// Derived paths
-	DraftsDir      string
-	CacheDir       string
-	EmailCacheDir  string
-	AttachmentDir  string
-	MetadataFile   string
+	// Derived paths (account-specific)
+	DraftsDir     string
+	CacheDir      string
+	EmailCacheDir string
+	AttachmentDir string
+	MetadataFile  string
 }
 
-// LoadConfig loads configuration from environment variables
-func LoadConfig() (*Config, error) {
-	cfg := &Config{
-		Provider:          "gmail",
-		CacheMaxSize:      10485760,  // 10MB default
-		MaxAttachmentSize: 26214400,  // 25MB default
-		TimeoutSeconds:    120,        // 2 minutes default
+// MultiAccountConfig manages multiple email accounts
+type MultiAccountConfig struct {
+	// Global storage settings
+	FilesRoot         string
+	CacheMaxSize      int64
+	MaxAttachmentSize int64
+
+	// Account management
+	Accounts         map[string]*AccountConfig
+	DefaultAccountID string
+}
+
+// LoadConfig loads multi-account configuration from environment variables
+func LoadConfig() (*MultiAccountConfig, error) {
+	cfg := &MultiAccountConfig{
 		FilesRoot:         "/tmp/email-mcp",
+		CacheMaxSize:      10485760, // 10MB default
+		MaxAttachmentSize: 26214400, // 25MB default
+		Accounts:          make(map[string]*AccountConfig),
 	}
 
-	// Email account settings (optional at startup)
-	cfg.EmailAddress = os.Getenv("EMAIL_ADDRESS")
-	cfg.EmailPassword = os.Getenv("EMAIL_APP_PASSWORD")
-
-	// Provider
-	if provider := os.Getenv("EMAIL_PROVIDER"); provider != "" {
-		cfg.Provider = provider
-	}
-
-	// Auto-configure for known providers
-	switch cfg.Provider {
-	case "gmail":
-		cfg.IMAPServer = "imap.gmail.com"
-		cfg.IMAPPort = 993
-		cfg.SMTPServer = "smtp.gmail.com"
-		cfg.SMTPPort = 587
-	case "outlook":
-		cfg.IMAPServer = "outlook.office365.com"
-		cfg.IMAPPort = 993
-		cfg.SMTPServer = "smtp-mail.outlook.com"
-		cfg.SMTPPort = 587
-	}
-
-	// Override with explicit settings if provided
-	if server := os.Getenv("EMAIL_IMAP_SERVER"); server != "" {
-		cfg.IMAPServer = server
-	}
-	if port := os.Getenv("EMAIL_IMAP_PORT"); port != "" {
-		p, err := strconv.Atoi(port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid EMAIL_IMAP_PORT: %w", err)
-		}
-		cfg.IMAPPort = p
-	}
-	if server := os.Getenv("EMAIL_SMTP_SERVER"); server != "" {
-		cfg.SMTPServer = server
-	}
-	if port := os.Getenv("EMAIL_SMTP_PORT"); port != "" {
-		p, err := strconv.Atoi(port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid EMAIL_SMTP_PORT: %w", err)
-		}
-		cfg.SMTPPort = p
-	}
-
-	// Storage settings
+	// Load global storage settings
 	if root := os.Getenv("FILES_ROOT"); root != "" {
 		cfg.FilesRoot = root
 	}
@@ -110,79 +78,224 @@ func LoadConfig() (*Config, error) {
 		}
 		cfg.MaxAttachmentSize = s
 	}
-	if timeout := os.Getenv("EMAIL_TIMEOUT_SECONDS"); timeout != "" {
+
+	// Discover and load all accounts from environment variables
+	accountIDs := discoverAccountIDs()
+	if len(accountIDs) == 0 {
+		return nil, fmt.Errorf("no email accounts configured: please set ACCOUNT_{name}_EMAIL environment variables")
+	}
+
+	for _, accountID := range accountIDs {
+		acct, err := loadAccountConfig(accountID, cfg.FilesRoot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load account %s: %w", accountID, err)
+		}
+		cfg.Accounts[accountID] = acct
+	}
+
+	// Load default account ID
+	cfg.DefaultAccountID = os.Getenv("DEFAULT_ACCOUNT_ID")
+	if cfg.DefaultAccountID == "" {
+		return nil, fmt.Errorf("DEFAULT_ACCOUNT_ID environment variable is required")
+	}
+
+	// Validate default account exists
+	if _, ok := cfg.Accounts[cfg.DefaultAccountID]; !ok {
+		return nil, fmt.Errorf("default account %s not found in configured accounts", cfg.DefaultAccountID)
+	}
+
+	return cfg, nil
+}
+
+// discoverAccountIDs scans environment variables to find all configured accounts
+func discoverAccountIDs() []string {
+	accountSet := make(map[string]bool)
+	prefix := "ACCOUNT_"
+	suffix := "_EMAIL"
+
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		key := parts[0]
+
+		if strings.HasPrefix(key, prefix) && strings.HasSuffix(key, suffix) {
+			// Extract account ID from ACCOUNT_{id}_EMAIL
+			accountID := strings.TrimPrefix(key, prefix)
+			accountID = strings.TrimSuffix(accountID, suffix)
+			if accountID != "" {
+				accountSet[accountID] = true
+			}
+		}
+	}
+
+	accountIDs := make([]string, 0, len(accountSet))
+	for id := range accountSet {
+		accountIDs = append(accountIDs, id)
+	}
+	return accountIDs
+}
+
+// loadAccountConfig loads configuration for a single account
+func loadAccountConfig(accountID, filesRoot string) (*AccountConfig, error) {
+	prefix := "ACCOUNT_" + accountID + "_"
+
+	acct := &AccountConfig{
+		AccountID:      accountID,
+		Provider:       "gmail",       // default
+		TimeoutSeconds: 120,           // 2 minutes default
+	}
+
+	// Load email credentials
+	acct.EmailAddress = os.Getenv(prefix + "EMAIL")
+	if acct.EmailAddress == "" {
+		return nil, fmt.Errorf("missing %sEMAIL", prefix)
+	}
+
+	acct.EmailPassword = os.Getenv(prefix + "PASSWORD")
+	if acct.EmailPassword == "" {
+		return nil, fmt.Errorf("missing %sPASSWORD", prefix)
+	}
+
+	// Provider
+	if provider := os.Getenv(prefix + "PROVIDER"); provider != "" {
+		acct.Provider = provider
+	}
+
+	// Auto-configure for known providers
+	switch acct.Provider {
+	case "gmail":
+		acct.IMAPServer = "imap.gmail.com"
+		acct.IMAPPort = 993
+		acct.SMTPServer = "smtp.gmail.com"
+		acct.SMTPPort = 587
+	case "outlook":
+		acct.IMAPServer = "outlook.office365.com"
+		acct.IMAPPort = 993
+		acct.SMTPServer = "smtp-mail.outlook.com"
+		acct.SMTPPort = 587
+	default:
+		// For custom providers, all settings must be explicitly provided
+		acct.Provider = "custom"
+	}
+
+	// Override with explicit settings if provided
+	if server := os.Getenv(prefix + "IMAP_SERVER"); server != "" {
+		acct.IMAPServer = server
+	}
+	if port := os.Getenv(prefix + "IMAP_PORT"); port != "" {
+		p, err := strconv.Atoi(port)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %sIMAP_PORT: %w", prefix, err)
+		}
+		acct.IMAPPort = p
+	}
+	if server := os.Getenv(prefix + "SMTP_SERVER"); server != "" {
+		acct.SMTPServer = server
+	}
+	if port := os.Getenv(prefix + "SMTP_PORT"); port != "" {
+		p, err := strconv.Atoi(port)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %sSMTP_PORT: %w", prefix, err)
+		}
+		acct.SMTPPort = p
+	}
+	if timeout := os.Getenv(prefix + "TIMEOUT_SECONDS"); timeout != "" {
 		t, err := strconv.Atoi(timeout)
 		if err != nil {
-			return nil, fmt.Errorf("invalid EMAIL_TIMEOUT_SECONDS: %w", err)
+			return nil, fmt.Errorf("invalid %sTIMEOUT_SECONDS: %w", prefix, err)
 		}
-		cfg.TimeoutSeconds = t
+		acct.TimeoutSeconds = t
 	}
 
 	// Set timeout duration
-	cfg.Timeout = time.Duration(cfg.TimeoutSeconds) * time.Second
+	acct.Timeout = time.Duration(acct.TimeoutSeconds) * time.Second
 
 	// Validate required IMAP/SMTP settings
-	if cfg.IMAPServer == "" {
-		return nil, fmt.Errorf("EMAIL_IMAP_SERVER is required")
+	if acct.IMAPServer == "" {
+		return nil, fmt.Errorf("IMAP server not configured for account %s", accountID)
 	}
-	if cfg.IMAPPort == 0 {
-		return nil, fmt.Errorf("EMAIL_IMAP_PORT is required")
+	if acct.IMAPPort == 0 {
+		return nil, fmt.Errorf("IMAP port not configured for account %s", accountID)
 	}
-	if cfg.SMTPServer == "" {
-		return nil, fmt.Errorf("EMAIL_SMTP_SERVER is required")
+	if acct.SMTPServer == "" {
+		return nil, fmt.Errorf("SMTP server not configured for account %s", accountID)
 	}
-	if cfg.SMTPPort == 0 {
-		return nil, fmt.Errorf("EMAIL_SMTP_PORT is required")
+	if acct.SMTPPort == 0 {
+		return nil, fmt.Errorf("SMTP port not configured for account %s", accountID)
 	}
 
-	// Setup derived paths
-	cfg.DraftsDir = filepath.Join(cfg.FilesRoot, "drafts")
-	cfg.CacheDir = filepath.Join(cfg.FilesRoot, "cache")
-	cfg.EmailCacheDir = filepath.Join(cfg.CacheDir, "emails")
-	cfg.AttachmentDir = filepath.Join(cfg.CacheDir, "attachments")
-	cfg.MetadataFile = filepath.Join(cfg.FilesRoot, "metadata.yaml")
+	// Setup account-specific paths
+	accountRoot := filepath.Join(filesRoot, accountID)
+	acct.DraftsDir = filepath.Join(accountRoot, "drafts")
+	acct.CacheDir = filepath.Join(accountRoot, "cache")
+	acct.EmailCacheDir = filepath.Join(acct.CacheDir, "emails")
+	acct.AttachmentDir = filepath.Join(acct.CacheDir, "attachments")
+	acct.MetadataFile = filepath.Join(accountRoot, "metadata.yaml")
 
 	// Create directories
-	dirs := []string{cfg.DraftsDir, cfg.EmailCacheDir, cfg.AttachmentDir}
+	dirs := []string{acct.DraftsDir, acct.EmailCacheDir, acct.AttachmentDir}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
 
-	return cfg, nil
+	return acct, nil
 }
 
 // IsConfigured checks if email credentials are available
-func (c *Config) IsConfigured() bool {
-	return c.EmailAddress != "" && c.EmailPassword != ""
+func (a *AccountConfig) IsConfigured() bool {
+	return a.EmailAddress != "" && a.EmailPassword != ""
 }
 
 // ValidateForOperation checks if configuration is valid for email operations
-func (c *Config) ValidateForOperation() error {
-	if c.EmailAddress == "" {
-		return fmt.Errorf("email not configured: EMAIL_ADDRESS environment variable is required")
+func (a *AccountConfig) ValidateForOperation() error {
+	if a.EmailAddress == "" {
+		return fmt.Errorf("account %s: email address not configured", a.AccountID)
 	}
-	if c.EmailPassword == "" {
-		return fmt.Errorf("email not configured: EMAIL_APP_PASSWORD environment variable is required")
+	if a.EmailPassword == "" {
+		return fmt.Errorf("account %s: email password not configured", a.AccountID)
 	}
-	if c.IMAPServer == "" || c.IMAPPort == 0 {
-		return fmt.Errorf("IMAP server configuration is incomplete")
+	if a.IMAPServer == "" || a.IMAPPort == 0 {
+		return fmt.Errorf("account %s: IMAP server configuration is incomplete", a.AccountID)
 	}
-	if c.SMTPServer == "" || c.SMTPPort == 0 {
-		return fmt.Errorf("SMTP server configuration is incomplete")
+	if a.SMTPServer == "" || a.SMTPPort == 0 {
+		return fmt.Errorf("account %s: SMTP server configuration is incomplete", a.AccountID)
 	}
 	return nil
 }
 
 // Validate checks if basic configuration is valid (used for startup)
-func (c *Config) Validate() error {
-	// Only validate non-email settings at startup
-	if c.CacheMaxSize <= 0 {
+func (m *MultiAccountConfig) Validate() error {
+	if m.CacheMaxSize <= 0 {
 		return fmt.Errorf("invalid cache size")
 	}
-	if c.TimeoutSeconds <= 0 {
-		return fmt.Errorf("invalid timeout")
+	if len(m.Accounts) == 0 {
+		return fmt.Errorf("no accounts configured")
+	}
+	if m.DefaultAccountID == "" {
+		return fmt.Errorf("no default account specified")
 	}
 	return nil
+}
+
+// GetAccount returns the account config for the given ID, or default if empty
+func (m *MultiAccountConfig) GetAccount(accountID string) (*AccountConfig, error) {
+	if accountID == "" {
+		accountID = m.DefaultAccountID
+	}
+
+	acct, ok := m.Accounts[accountID]
+	if !ok {
+		return nil, fmt.Errorf("account %s not found", accountID)
+	}
+	return acct, nil
+}
+
+// ListAccountIDs returns all configured account IDs
+func (m *MultiAccountConfig) ListAccountIDs() []string {
+	ids := make([]string, 0, len(m.Accounts))
+	for id := range m.Accounts {
+		ids = append(ids, id)
+	}
+	return ids
 }
