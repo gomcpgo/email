@@ -4,11 +4,54 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"github.com/prasanthmj/email/pkg/email"
 )
+
+// handleListAccounts handles the list_accounts tool
+func (h *Handler) handleListAccounts(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	type AccountInfo struct {
+		ID           string `json:"id"`
+		EmailAddress string `json:"email"`
+		Provider     string `json:"provider"`
+		IsDefault    bool   `json:"is_default"`
+	}
+
+	accounts := make([]AccountInfo, 0, len(h.config.Accounts))
+	for id, acct := range h.config.Accounts {
+		accounts = append(accounts, AccountInfo{
+			ID:           id,
+			EmailAddress: acct.EmailAddress,
+			Provider:     acct.Provider,
+			IsDefault:    id == h.config.DefaultAccountID,
+		})
+	}
+
+	// Sort by default first, then alphabetically
+	sort.Slice(accounts, func(i, j int) bool {
+		if accounts[i].IsDefault != accounts[j].IsDefault {
+			return accounts[i].IsDefault
+		}
+		return accounts[i].ID < accounts[j].ID
+	})
+
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to format response: %w", err)
+	}
+
+	return &protocol.CallToolResponse{
+		Content: []protocol.ToolContent{
+			{
+				Type: "text",
+				Text: string(data),
+			},
+		},
+	}, nil
+}
 
 // handleListFolders handles the list_folders tool
 func (h *Handler) handleListFolders(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {

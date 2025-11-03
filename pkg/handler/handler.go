@@ -113,7 +113,7 @@ func (h *Handler) getAttachmentFetcher(accountID string) (*email.AttachmentFetch
 	}
 
 	if clients.attFetcher == nil {
-		clients.attFetcher = email.NewAttachmentFetcher(acctCfg, imapClient)
+		clients.attFetcher = email.NewAttachmentFetcher(acctCfg, imapClient, h.config.MaxAttachmentSize)
 	}
 	return clients.attFetcher, nil
 }
@@ -139,6 +139,8 @@ func (h *Handler) getCacheManager(accountID string) (*storage.CacheManager, erro
 // CallTool handles MCP tool calls
 func (h *Handler) CallTool(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	switch req.Name {
+	case "list_accounts":
+		return h.handleListAccounts(ctx, req.Arguments)
 	case "list_folders":
 		return h.handleListFolders(ctx, req.Arguments)
 	case "fetch_email_headers":

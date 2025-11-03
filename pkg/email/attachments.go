@@ -16,15 +16,17 @@ import (
 
 // AttachmentFetcher handles attachment operations
 type AttachmentFetcher struct {
-	config     *config.AccountConfig
-	imapClient *IMAPClient
+	config            *config.AccountConfig
+	imapClient        *IMAPClient
+	maxAttachmentSize int64
 }
 
 // NewAttachmentFetcher creates a new attachment fetcher
-func NewAttachmentFetcher(cfg *config.AccountConfig, imapClient *IMAPClient) *AttachmentFetcher {
+func NewAttachmentFetcher(cfg *config.AccountConfig, imapClient *IMAPClient, maxAttachmentSize int64) *AttachmentFetcher {
 	return &AttachmentFetcher{
-		config:     cfg,
-		imapClient: imapClient,
+		config:            cfg,
+		imapClient:        imapClient,
+		maxAttachmentSize: maxAttachmentSize,
 	}
 }
 
@@ -178,7 +180,7 @@ func (af *AttachmentFetcher) fetchAttachmentsFromFolder(c *client.Client, folder
 			}
 
 			// Check size limit
-			if int64(len(content)) > af.config.MaxAttachmentSize {
+			if int64(len(content)) > af.maxAttachmentSize {
 				results = append(results, AttachmentResult{
 					Filename: filename,
 					Size:     int64(len(content)),
