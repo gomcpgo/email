@@ -10,8 +10,8 @@ import (
 func GetTools() []protocol.Tool {
 	return []protocol.Tool{
 		{
-			Name:        "list_folders",
-			Description: "List all available email folders/labels with message counts",
+			Name:        "list_accounts",
+			Description: "List all configured email accounts with their IDs, email addresses, and which is the default account. Use this to discover available accounts before using account_id parameter in other tools.",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {},
@@ -19,11 +19,29 @@ func GetTools() []protocol.Tool {
 			}`),
 		},
 		{
-			Name:        "fetch_email_headers",
-			Description: "Fetch email headers (metadata) without bodies. Use this to list emails before fetching full content. Be mindful of the limit parameter as fetching many emails uses memory.",
+			Name:        "list_folders",
+			Description: "List all available email folders/labels with message counts. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					}
+				},
+				"required": []
+			}`),
+		},
+		{
+			Name:        "fetch_email_headers",
+			Description: "Fetch email headers (metadata) without bodies. Use this to list emails before fetching full content. Be mindful of the limit parameter as fetching many emails uses memory. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"folder": {
 						"type": "string",
 						"description": "Email folder to fetch from (e.g., 'INBOX', 'Sent'). Default: INBOX"
@@ -58,10 +76,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "fetch_email",
-			Description: "Fetch a complete email with body and attachment list using its Message-ID",
+			Description: "Fetch a complete email with body and attachment list using its Message-ID. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"message_id": {
 						"type": "string",
 						"description": "The Message-ID header value (e.g., '<CADsK8=example@mail.gmail.com>')"
@@ -72,10 +94,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "send_email",
-			Description: "Send an email. Properly sets threading headers for replies.",
+			Description: "Send an email. Properly sets threading headers for replies. Use account_id parameter to specify which email account to send from (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"to": {
 						"type": "array",
 						"items": {"type": "string"},
@@ -123,10 +149,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "fetch_email_attachment",
-			Description: "Fetch attachments from an email. Files are saved to cache for use with send_email. Maximum attachment size: 25MB.",
+			Description: "Fetch attachments from an email. Files are saved to cache for use with send_email. Maximum attachment size: 25MB. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"message_id": {
 						"type": "string",
 						"description": "The Message-ID header value of the email"
@@ -146,10 +176,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "create_draft",
-			Description: "Create a new email draft. Save an email composition for later sending or editing.",
+			Description: "Create a new email draft. Save an email composition for later sending or editing. Use account_id parameter to specify which email account to use (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"to": {
 						"type": "array",
 						"items": {"type": "string"},
@@ -197,19 +231,28 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "list_drafts",
-			Description: "List all saved email drafts with their summaries",
+			Description: "List all saved email drafts with their summaries. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
-				"properties": {},
+				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					}
+				},
 				"required": []
 			}`),
 		},
 		{
 			Name:        "get_draft",
-			Description: "Retrieve a specific draft by its ID to view or edit",
+			Description: "Retrieve a specific draft by its ID to view or edit. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to retrieve"
@@ -220,10 +263,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "update_draft",
-			Description: "Update an existing draft. Only provided fields will be updated.",
+			Description: "Update an existing draft. Only provided fields will be updated. Use account_id parameter to specify which email account to use (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to update"
@@ -266,10 +313,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "send_draft",
-			Description: "Send a draft email and remove it from drafts storage",
+			Description: "Send a draft email and remove it from drafts storage. Use account_id parameter to specify which email account to send from (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to send"
@@ -280,10 +331,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "delete_draft",
-			Description: "Delete a draft without sending it",
+			Description: "Delete a draft without sending it. Use account_id parameter to specify which email account to use (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"draft_id": {
 						"type": "string",
 						"description": "The ID of the draft to delete"
@@ -294,10 +349,14 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "send_all_drafts",
-			Description: "Send all drafts with a configurable delay between each email to avoid rate limits",
+			Description: "Send all drafts with a configurable delay between each email to avoid rate limits. Use account_id parameter to specify which email account to send from (call list_accounts first to see available accounts).",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
 					"delay_seconds": {
 						"type": "integer",
 						"description": "Seconds to wait between sending each email (2-60). Default: 5"

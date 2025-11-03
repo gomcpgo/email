@@ -12,6 +12,12 @@ import (
 
 // handleCreateDraft handles the create_draft tool
 func (h *Handler) handleCreateDraft(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	opts := email.SendOptions{}
 
 	// Parse recipients
@@ -75,8 +81,14 @@ func (h *Handler) handleCreateDraft(ctx context.Context, args map[string]interfa
 		}
 	}
 
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Save the draft
-	draftID, err := h.storage.SaveDraft(opts)
+	draftID, err := stor.SaveDraft(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save draft: %w", err)
 	}
@@ -93,7 +105,19 @@ func (h *Handler) handleCreateDraft(ctx context.Context, args map[string]interfa
 
 // handleListDrafts handles the list_drafts tool
 func (h *Handler) handleListDrafts(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
-	drafts, err := h.storage.ListDrafts()
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	drafts, err := stor.ListDrafts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list drafts: %w", err)
 	}
@@ -116,12 +140,24 @@ func (h *Handler) handleListDrafts(ctx context.Context, args map[string]interfac
 
 // handleGetDraft handles the get_draft tool
 func (h *Handler) handleGetDraft(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	draftID, ok := args["draft_id"].(string)
 	if !ok || draftID == "" {
 		return nil, fmt.Errorf("draft_id parameter is required")
 	}
 
-	draft, err := h.storage.LoadDraft(draftID)
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	draft, err := stor.LoadDraft(draftID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load draft: %w", err)
 	}
@@ -144,13 +180,25 @@ func (h *Handler) handleGetDraft(ctx context.Context, args map[string]interface{
 
 // handleUpdateDraft handles the update_draft tool
 func (h *Handler) handleUpdateDraft(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	draftID, ok := args["draft_id"].(string)
 	if !ok || draftID == "" {
 		return nil, fmt.Errorf("draft_id parameter is required")
 	}
 
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Load existing draft first
-	existingDraft, err := h.storage.LoadDraft(draftID)
+	existingDraft, err := stor.LoadDraft(draftID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load existing draft: %w", err)
 	}
@@ -220,11 +268,11 @@ func (h *Handler) handleUpdateDraft(ctx context.Context, args map[string]interfa
 	}
 
 	// Delete old draft and save new one with same ID
-	if err := h.storage.DeleteDraft(draftID); err != nil {
+	if err := stor.DeleteDraft(draftID); err != nil {
 		return nil, fmt.Errorf("failed to delete old draft: %w", err)
 	}
 
-	newDraftID, err := h.storage.SaveDraft(opts)
+	newDraftID, err := stor.SaveDraft(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save updated draft: %w", err)
 	}
@@ -241,13 +289,25 @@ func (h *Handler) handleUpdateDraft(ctx context.Context, args map[string]interfa
 
 // handleSendDraft handles the send_draft tool
 func (h *Handler) handleSendDraft(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	draftID, ok := args["draft_id"].(string)
 	if !ok || draftID == "" {
 		return nil, fmt.Errorf("draft_id parameter is required")
 	}
 
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Load the draft
-	draft, err := h.storage.LoadDraft(draftID)
+	draft, err := stor.LoadDraft(draftID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load draft: %w", err)
 	}
@@ -277,7 +337,7 @@ func (h *Handler) handleSendDraft(ctx context.Context, args map[string]interface
 	}
 
 	// Send the email
-	smtpClient, err := h.getSMTPClient()
+	smtpClient, err := h.getSMTPClient(accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +347,7 @@ func (h *Handler) handleSendDraft(ctx context.Context, args map[string]interface
 	}
 
 	// Delete the draft after successful send
-	if err := h.storage.DeleteDraft(draftID); err != nil {
+	if err := stor.DeleteDraft(draftID); err != nil {
 		// Log error but don't fail - email was sent successfully
 		fmt.Printf("Warning: failed to delete draft after sending: %v\n", err)
 	}
@@ -304,12 +364,24 @@ func (h *Handler) handleSendDraft(ctx context.Context, args map[string]interface
 
 // handleDeleteDraft handles the delete_draft tool
 func (h *Handler) handleDeleteDraft(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	draftID, ok := args["draft_id"].(string)
 	if !ok || draftID == "" {
 		return nil, fmt.Errorf("draft_id parameter is required")
 	}
 
-	if err := h.storage.DeleteDraft(draftID); err != nil {
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := stor.DeleteDraft(draftID); err != nil {
 		return nil, fmt.Errorf("failed to delete draft: %w", err)
 	}
 
@@ -325,6 +397,12 @@ func (h *Handler) handleDeleteDraft(ctx context.Context, args map[string]interfa
 
 // handleSendAllDrafts handles the send_all_drafts tool
 func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	// Parse parameters
 	delaySeconds := 5
 	if delay, ok := args["delay_seconds"].(float64); ok {
@@ -346,8 +424,14 @@ func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]inter
 		stopOnError = soe
 	}
 
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all drafts
-	drafts, err := h.storage.ListDrafts()
+	drafts, err := stor.ListDrafts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list drafts: %w", err)
 	}
@@ -366,7 +450,7 @@ func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]inter
 	// Prepare SMTP client if not dry run
 	var smtpClient *email.SMTPClient
 	if !dryRun {
-		smtpClient, err = h.getSMTPClient()
+		smtpClient, err = h.getSMTPClient(accountID)
 		if err != nil {
 			return nil, err
 		}
@@ -387,7 +471,7 @@ func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]inter
 
 	for i, draftSummary := range drafts {
 		// Load full draft
-		draft, err := h.storage.LoadDraft(draftSummary.ID)
+		draft, err := stor.LoadDraft(draftSummary.ID)
 		if err != nil {
 			result := sendResult{
 				DraftID: draftSummary.ID,
@@ -398,7 +482,7 @@ func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]inter
 			}
 			results = append(results, result)
 			failCount++
-			
+
 			if stopOnError {
 				break
 			}
@@ -430,13 +514,13 @@ func (h *Handler) handleSendAllDrafts(ctx context.Context, args map[string]inter
 				}
 				results = append(results, result)
 				failCount++
-				
+
 				if stopOnError {
 					break
 				}
 			} else {
 				// Success - delete the draft
-				h.storage.DeleteDraft(draft.ID)
+				stor.DeleteDraft(draft.ID)
 				
 				result := sendResult{
 					DraftID: draft.ID,

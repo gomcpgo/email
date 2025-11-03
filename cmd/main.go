@@ -60,12 +60,12 @@ func main() {
 }
 
 // runTerminalMode executes terminal mode for CLI testing
-func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEmail string,
-	sendTest bool, fetchAttachment string, cacheInfo, clearCache, debugMode bool, 
+func runTerminalMode(cfg *config.MultiAccountConfig, listFolders bool, fetchHeaders, fetchEmail string,
+	sendTest bool, fetchAttachment string, cacheInfo, clearCache, debugMode bool,
 	toolName, toolArgs string) error {
-	
+
 	ctx := context.Background()
-	
+
 	// Create handler
 	h, err := emailHandler.NewHandler(cfg)
 	if err != nil {
@@ -74,8 +74,15 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 
 	// Cache operations
 	if cacheInfo || clearCache {
-		cacheManager := storage.NewCacheManager(cfg.FilesRoot, cfg.CacheMaxSize)
-		
+		// Use default account for cache operations
+		defaultAcct, err := cfg.GetAccount("")
+		if err != nil {
+			return fmt.Errorf("failed to get default account: %w", err)
+		}
+
+		accountRoot := defaultAcct.DraftsDir[:len(defaultAcct.DraftsDir)-len("/drafts")]
+		cacheManager := storage.NewCacheManager(accountRoot, cfg.CacheMaxSize)
+
 		if clearCache {
 			if err := cacheManager.ClearCache(); err != nil {
 				return fmt.Errorf("failed to clear cache: %w", err)
@@ -83,7 +90,7 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 			fmt.Println("Cache cleared successfully")
 			return nil
 		}
-		
+
 		if cacheInfo {
 			info, err := cacheManager.GetCacheInfo()
 			if err != nil {
@@ -167,9 +174,14 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 	if sendTest {
 		testAddr := os.Getenv("TEST_EMAIL_ADDRESS")
 		if testAddr == "" {
-			testAddr = cfg.EmailAddress // Send to self
+			// Use default account's email address
+			defaultAcct, err := cfg.GetAccount("")
+			if err != nil {
+				return fmt.Errorf("failed to get default account: %w", err)
+			}
+			testAddr = defaultAcct.EmailAddress // Send to self
 		}
-		
+
 		req := &protocol.CallToolRequest{
 			Name: "send_email",
 			Arguments: map[string]interface{}{
@@ -178,12 +190,12 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 				"body":    "This is a test email sent from the Email MCP server terminal mode.",
 			},
 		}
-		
+
 		resp, err := h.CallTool(ctx, req)
 		if err != nil {
 			return err
 		}
-		
+
 		if len(resp.Content) > 0 {
 			fmt.Println(resp.Content[0].Text)
 		}
@@ -238,7 +250,7 @@ func runTerminalMode(cfg *config.Config, listFolders bool, fetchHeaders, fetchEm
 }
 
 // runMCPServer runs the MCP server
-func runMCPServer(cfg *config.Config) error {
+func runMCPServer(cfg *config.MultiAccountConfig) error {
 	// Create handler
 	h, err := emailHandler.NewHandler(cfg)
 	if err != nil {

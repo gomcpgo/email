@@ -13,11 +13,11 @@ import (
 
 // IMAPClient handles IMAP operations
 type IMAPClient struct {
-	config *config.Config
+	config *config.AccountConfig
 }
 
 // NewIMAPClient creates a new IMAP client
-func NewIMAPClient(cfg *config.Config) *IMAPClient {
+func NewIMAPClient(cfg *config.AccountConfig) *IMAPClient {
 	return &IMAPClient{
 		config: cfg,
 	}

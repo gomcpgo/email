@@ -13,11 +13,11 @@ import (
 
 // SMTPClient handles SMTP operations
 type SMTPClient struct {
-	config *config.Config
+	config *config.AccountConfig
 }
 
 // NewSMTPClient creates a new SMTP client
-func NewSMTPClient(cfg *config.Config) *SMTPClient {
+func NewSMTPClient(cfg *config.AccountConfig) *SMTPClient {
 	return &SMTPClient{
 		config: cfg,
 	}

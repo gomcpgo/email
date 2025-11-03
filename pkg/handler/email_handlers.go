@@ -4,19 +4,68 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"github.com/prasanthmj/email/pkg/email"
 )
 
+// handleListAccounts handles the list_accounts tool
+func (h *Handler) handleListAccounts(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	type AccountInfo struct {
+		ID           string `json:"id"`
+		EmailAddress string `json:"email"`
+		Provider     string `json:"provider"`
+		IsDefault    bool   `json:"is_default"`
+	}
+
+	accounts := make([]AccountInfo, 0, len(h.config.Accounts))
+	for id, acct := range h.config.Accounts {
+		accounts = append(accounts, AccountInfo{
+			ID:           id,
+			EmailAddress: acct.EmailAddress,
+			Provider:     acct.Provider,
+			IsDefault:    id == h.config.DefaultAccountID,
+		})
+	}
+
+	// Sort by default first, then alphabetically
+	sort.Slice(accounts, func(i, j int) bool {
+		if accounts[i].IsDefault != accounts[j].IsDefault {
+			return accounts[i].IsDefault
+		}
+		return accounts[i].ID < accounts[j].ID
+	})
+
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to format response: %w", err)
+	}
+
+	return &protocol.CallToolResponse{
+		Content: []protocol.ToolContent{
+			{
+				Type: "text",
+				Text: string(data),
+			},
+		},
+	}, nil
+}
+
 // handleListFolders handles the list_folders tool
 func (h *Handler) handleListFolders(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
-	imapClient, err := h.getIMAPClient()
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
+	imapClient, err := h.getIMAPClient(accountID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	folders, err := imapClient.ListFolders()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list folders: %w", err)
@@ -40,6 +89,12 @@ func (h *Handler) handleListFolders(ctx context.Context, args map[string]interfa
 
 // handleFetchEmailHeaders handles the fetch_email_headers tool
 func (h *Handler) handleFetchEmailHeaders(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	opts := email.FetchOptions{
 		Folder: "INBOX",
 		Limit:  50,
@@ -86,11 +141,11 @@ func (h *Handler) handleFetchEmailHeaders(ctx context.Context, args map[string]i
 	}
 
 	// Fetch headers
-	imapClient, err := h.getIMAPClient()
+	imapClient, err := h.getIMAPClient(accountID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	headers, err := imapClient.FetchHeaders(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch email headers: %w", err)
@@ -114,13 +169,25 @@ func (h *Handler) handleFetchEmailHeaders(ctx context.Context, args map[string]i
 
 // handleFetchEmail handles the fetch_email tool
 func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
 		return nil, fmt.Errorf("message_id parameter is required")
 	}
 
+	// Get account-specific storage
+	stor, err := h.getStorage(accountID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Try to load from cache first
-	cachedEmail, err := h.storage.LoadEmail(messageID)
+	cachedEmail, err := stor.LoadEmail(messageID)
 	if err == nil {
 		// Found in cache
 		data, err := json.MarshalIndent(cachedEmail, "", "  ")
@@ -139,18 +206,18 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	}
 
 	// Not in cache, fetch from server
-	imapClient, err := h.getIMAPClient()
+	imapClient, err := h.getIMAPClient(accountID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	emailMsg, err := imapClient.FetchEmail(messageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch email: %w", err)
 	}
 
 	// Save to cache
-	if err := h.storage.SaveEmail(emailMsg); err != nil {
+	if err := stor.SaveEmail(emailMsg); err != nil {
 		// Log error but continue
 		fmt.Printf("Failed to cache email: %v\n", err)
 	}
@@ -173,6 +240,12 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 
 // handleSendEmail handles the send_email tool
 func (h *Handler) handleSendEmail(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	opts := email.SendOptions{}
 
 	// Parse recipients
@@ -246,11 +319,11 @@ func (h *Handler) handleSendEmail(ctx context.Context, args map[string]interface
 	}
 
 	// Send the email
-	smtpClient, err := h.getSMTPClient()
+	smtpClient, err := h.getSMTPClient(accountID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if err := smtpClient.SendEmail(opts); err != nil {
 		return nil, fmt.Errorf("failed to send email: %w", err)
 	}
@@ -267,6 +340,12 @@ func (h *Handler) handleSendEmail(ctx context.Context, args map[string]interface
 
 // handleFetchEmailAttachment handles the fetch_email_attachment tool
 func (h *Handler) handleFetchEmailAttachment(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
 		return nil, fmt.Errorf("message_id parameter is required")
@@ -287,7 +366,7 @@ func (h *Handler) handleFetchEmailAttachment(ctx context.Context, args map[strin
 	}
 
 	// Fetch attachments
-	attFetcher, err := h.getAttachmentFetcher()
+	attFetcher, err := h.getAttachmentFetcher(accountID)
 	if err != nil {
 		return nil, err
 	}
