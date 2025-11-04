@@ -85,6 +85,36 @@ func LoadConfig() (*MultiAccountConfig, error) {
 		return nil, fmt.Errorf("no email accounts configured: please set ACCOUNT_{name}_EMAIL environment variables")
 	}
 
+	// Build map of current accounts (accountID -> email) for migration detection
+	currentAccounts := make(map[string]string)
+	for _, accountID := range accountIDs {
+		prefix := "ACCOUNT_" + accountID + "_"
+		email := os.Getenv(prefix + "EMAIL")
+		if email != "" {
+			currentAccounts[accountID] = email
+		}
+	}
+
+	// Detect and execute folder migrations before loading accounts
+	migrations, err := DetectMigrations(cfg.FilesRoot, currentAccounts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect migrations: %w", err)
+	}
+
+	if len(migrations) > 0 {
+		fmt.Fprintf(os.Stderr, "Detected %d account folder migration(s)\n", len(migrations))
+		migrationErrors := ExecuteAllMigrations(cfg.FilesRoot, migrations)
+		if len(migrationErrors) > 0 {
+			// Log migration errors but don't fail startup
+			for _, err := range migrationErrors {
+				fmt.Fprintf(os.Stderr, "Migration warning: %v\n", err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "All migrations completed successfully\n")
+		}
+	}
+
+	// Load all accounts
 	for _, accountID := range accountIDs {
 		acct, err := loadAccountConfig(accountID, cfg.FilesRoot)
 		if err != nil {
@@ -237,6 +267,11 @@ func loadAccountConfig(accountID, filesRoot string) (*AccountConfig, error) {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
+	}
+
+	// Write or update metadata for migration tracking
+	if err := WriteAccountMetadata(acct.MetadataFile, acct.AccountID, acct.EmailAddress); err != nil {
+		return nil, fmt.Errorf("failed to write account metadata: %w", err)
 	}
 
 	return acct, nil
