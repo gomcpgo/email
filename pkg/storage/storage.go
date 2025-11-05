@@ -226,17 +226,17 @@ func (s *Storage) generateDraftID() string {
 
 // Draft represents a saved email draft
 type Draft struct {
-	ID               string    `yaml:"id"`
-	CreatedAt        time.Time `yaml:"created_at"`
-	To               []string  `yaml:"to"`
-	CC               []string  `yaml:"cc,omitempty"`
-	BCC              []string  `yaml:"bcc,omitempty"`
-	Subject          string    `yaml:"subject"`
-	Body             string    `yaml:"body"`
-	HTMLBody         string    `yaml:"html_body,omitempty"`
-	Attachments      []string  `yaml:"attachments,omitempty"`
-	ReplyToMessageID string    `yaml:"reply_to_message_id,omitempty"`
-	References       []string  `yaml:"references,omitempty"`
+	ID               string    `yaml:"id" json:"id"`
+	CreatedAt        time.Time `yaml:"created_at" json:"created_at"`
+	To               []string  `yaml:"to" json:"to"`
+	CC               []string  `yaml:"cc,omitempty" json:"cc,omitempty"`
+	BCC              []string  `yaml:"bcc,omitempty" json:"bcc,omitempty"`
+	Subject          string    `yaml:"subject" json:"subject"`
+	Body             string    `yaml:"body" json:"body"`
+	HTMLBody         string    `yaml:"html_body,omitempty" json:"html_body,omitempty"`
+	Attachments      []string  `yaml:"attachments,omitempty" json:"attachments,omitempty"`
+	ReplyToMessageID string    `yaml:"reply_to_message_id,omitempty" json:"reply_to_message_id,omitempty"`
+	References       []string  `yaml:"references,omitempty" json:"references,omitempty"`
 }
 
 // DraftSummary represents a draft summary for listing
