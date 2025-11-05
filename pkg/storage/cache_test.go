@@ -77,9 +77,15 @@ func TestCacheCleanup(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create cache directory
+	cacheDir := filepath.Join(tempDir, "cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
 	cm := &CacheManager{
 		rootDir:      tempDir,
-		metadataFile: filepath.Join(tempDir, "metadata.yaml"),
+		metadataFile: filepath.Join(tempDir, "cache", "cache_metadata.yaml"),
 		maxSize:      2048,
 		maxAge:       24 * time.Hour,
 	}
