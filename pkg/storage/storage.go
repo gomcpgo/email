@@ -154,6 +154,45 @@ func (s *Storage) LoadDraft(draftID string) (*Draft, error) {
 	return &draft, nil
 }
 
+// UpdateDraft updates an existing draft while preserving its ID and created_at timestamp
+func (s *Storage) UpdateDraft(draftID string, opts email.SendOptions) error {
+	// Load existing draft to preserve metadata
+	existingDraft, err := s.LoadDraft(draftID)
+	if err != nil {
+		return fmt.Errorf("failed to load existing draft: %w", err)
+	}
+
+	// Create updated draft preserving ID and created_at
+	draft := Draft{
+		ID:               existingDraft.ID,        // Preserve original ID
+		CreatedAt:        existingDraft.CreatedAt, // Preserve creation time
+		To:               opts.To,
+		CC:               opts.CC,
+		BCC:              opts.BCC,
+		Subject:          opts.Subject,
+		Body:             opts.Body,
+		HTMLBody:         opts.HTMLBody,
+		Attachments:      opts.Attachments,
+		ReplyToMessageID: opts.ReplyToMessageID,
+		References:       opts.References,
+	}
+
+	// Marshal to YAML
+	data, err := yaml.Marshal(draft)
+	if err != nil {
+		return fmt.Errorf("failed to marshal draft: %w", err)
+	}
+
+	// Write to file (overwrites existing file)
+	filename := fmt.Sprintf("draft_%s.yaml", draftID)
+	filePath := filepath.Join(s.draftsDir, filename)
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write draft: %w", err)
+	}
+
+	return nil
+}
+
 // ListDrafts returns all draft IDs
 func (s *Storage) ListDrafts() ([]DraftSummary, error) {
 	files, err := os.ReadDir(s.draftsDir)

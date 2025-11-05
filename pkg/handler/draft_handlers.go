@@ -267,21 +267,18 @@ func (h *Handler) handleUpdateDraft(ctx context.Context, args map[string]interfa
 		}
 	}
 
-	// Delete old draft and save new one with same ID
-	if err := stor.DeleteDraft(draftID); err != nil {
-		return nil, fmt.Errorf("failed to delete old draft: %w", err)
+	// Update the draft (preserves ID and created_at)
+	fmt.Printf("DEBUG: Updating draft %s with subject: %s\n", draftID, opts.Subject)
+	if err := stor.UpdateDraft(draftID, opts); err != nil {
+		return nil, fmt.Errorf("failed to update draft: %w", err)
 	}
-
-	newDraftID, err := stor.SaveDraft(opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save updated draft: %w", err)
-	}
+	fmt.Printf("DEBUG: Successfully updated draft %s\n", draftID)
 
 	return &protocol.CallToolResponse{
 		Content: []protocol.ToolContent{
 			{
 				Type: "text",
-				Text: fmt.Sprintf("Draft updated successfully. New ID: %s", newDraftID),
+				Text: fmt.Sprintf("Draft %s updated successfully", draftID),
 			},
 		},
 	}, nil
