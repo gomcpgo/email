@@ -37,11 +37,67 @@ type CacheManager struct {
 
 // NewCacheManager creates a new cache manager
 func NewCacheManager(rootDir string, maxSize int64) *CacheManager {
-	return &CacheManager{
+	cm := &CacheManager{
 		rootDir:      rootDir,
-		metadataFile: filepath.Join(rootDir, "metadata.yaml"),
+		metadataFile: filepath.Join(rootDir, "cache", "cache_metadata.yaml"),
 		maxSize:      maxSize,
 		maxAge:       24 * time.Hour, // 1 day
+	}
+
+	// Migrate old cache metadata if it exists
+	cm.migrateOldMetadata()
+
+	return cm
+}
+
+// migrateOldMetadata migrates cache metadata from old location to new location
+// Old location: {rootDir}/metadata.yaml
+// New location: {rootDir}/cache/cache_metadata.yaml
+func (cm *CacheManager) migrateOldMetadata() {
+	oldPath := filepath.Join(cm.rootDir, "metadata.yaml")
+	newPath := cm.metadataFile
+
+	// Check if old metadata exists
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		// Old metadata doesn't exist, nothing to migrate
+		return
+	}
+
+	// Try to parse as cache metadata
+	var metadata CacheMetadata
+	if err := yaml.Unmarshal(data, &metadata); err != nil {
+		// Not valid cache metadata, leave it alone (probably account metadata)
+		return
+	}
+
+	// Check if it has cache_version field (distinguishes cache metadata from account metadata)
+	if metadata.Version == 0 {
+		// Doesn't look like cache metadata, leave it alone
+		return
+	}
+
+	// Ensure cache directory exists
+	cacheDir := filepath.Dir(newPath)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		// Can't create directory, skip migration
+		return
+	}
+
+	// Check if new location already exists
+	if _, err := os.Stat(newPath); err == nil {
+		// New metadata already exists, don't overwrite
+		// Remove old file to avoid confusion
+		os.Remove(oldPath)
+		return
+	}
+
+	// Move the file to new location
+	if err := os.Rename(oldPath, newPath); err != nil {
+		// If rename fails, try copy+delete
+		if writeErr := os.WriteFile(newPath, data, 0644); writeErr == nil {
+			os.Remove(oldPath)
+		}
 	}
 }
 
@@ -72,6 +128,12 @@ func (cm *CacheManager) SaveMetadata(metadata *CacheMetadata) error {
 	data, err := yaml.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	// Ensure directory exists
+	metadataDir := filepath.Dir(cm.metadataFile)
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create metadata directory: %w", err)
 	}
 
 	if err := os.WriteFile(cm.metadataFile, data, 0644); err != nil {
