@@ -76,7 +76,7 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "fetch_email",
-			Description: "Fetch a complete email with body and attachment list using its Message-ID. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts).",
+			Description: "Fetch a complete email with body and attachment list using its Message-ID. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts). Use max_body_length to limit the size of email bodies to avoid context overflow.",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
@@ -87,6 +87,14 @@ func GetTools() []protocol.Tool {
 					"message_id": {
 						"type": "string",
 						"description": "The Message-ID header value (e.g., '<CADsK8=example@mail.gmail.com>')"
+					},
+					"include_body": {
+						"type": "boolean",
+						"description": "Whether to include the full email body. If false, returns only headers and '[Body omitted]'. Default: true"
+					},
+					"max_body_length": {
+						"type": "integer",
+						"description": "Maximum number of characters to include in body/html_body fields. If the body exceeds this, it will be truncated. Default: 50000"
 					}
 				},
 				"required": ["message_id"]

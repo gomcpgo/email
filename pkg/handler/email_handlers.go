@@ -180,6 +180,21 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 		return nil, fmt.Errorf("message_id parameter is required")
 	}
 
+	// Extract optional parameters
+	// max_body_length: maximum characters to include in body/html_body (default: 50000)
+	maxBodyLength := 50000
+	if maxLen, ok := args["max_body_length"].(float64); ok {
+		maxBodyLength = int(maxLen)
+	} else if maxLen, ok := args["max_body_length"].(int); ok {
+		maxBodyLength = maxLen
+	}
+
+	// include_body: whether to include full body (default: true)
+	includeBody := true
+	if incBody, ok := args["include_body"].(bool); ok {
+		includeBody = incBody
+	}
+
 	// Get account-specific storage
 	stor, err := h.getStorage(accountID)
 	if err != nil {
@@ -189,7 +204,9 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	// Try to load from cache first
 	cachedEmail, err := stor.LoadEmail(messageID)
 	if err == nil {
-		// Found in cache
+		// Found in cache - apply size limits
+		cachedEmail = truncateEmailContent(cachedEmail, maxBodyLength, includeBody)
+
 		data, err := json.MarshalIndent(cachedEmail, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("failed to format response: %w", err)
@@ -222,6 +239,9 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 		fmt.Printf("Failed to cache email: %v\n", err)
 	}
 
+	// Apply size limits
+	emailMsg = truncateEmailContent(emailMsg, maxBodyLength, includeBody)
+
 	// Convert to JSON for response
 	data, err := json.MarshalIndent(emailMsg, "", "  ")
 	if err != nil {
@@ -236,6 +256,30 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 			},
 		},
 	}, nil
+}
+
+// truncateEmailContent truncates email body content to the specified limit
+func truncateEmailContent(emailMsg *email.Email, maxBodyLength int, includeBody bool) *email.Email {
+	if !includeBody {
+		// Return minimal info without body
+		truncated := *emailMsg
+		truncated.Body = "[Body omitted]"
+		truncated.HTMLBody = ""
+		return &truncated
+	}
+
+	// Truncate body if it exceeds the limit
+	truncated := *emailMsg
+	if len(truncated.Body) > maxBodyLength {
+		truncated.Body = truncated.Body[:maxBodyLength] + fmt.Sprintf("\n\n[Content truncated. Original size: %d characters]", len(emailMsg.Body))
+	}
+
+	// Truncate HTML body if it exceeds the limit
+	if len(truncated.HTMLBody) > maxBodyLength {
+		truncated.HTMLBody = truncated.HTMLBody[:maxBodyLength] + fmt.Sprintf("\n\n[Content truncated. Original size: %d characters]", len(emailMsg.HTMLBody))
+	}
+
+	return &truncated
 }
 
 // handleSendEmail handles the send_email tool
