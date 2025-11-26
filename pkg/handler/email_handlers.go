@@ -13,6 +13,29 @@ import (
 
 // handleListAccounts handles the list_accounts tool
 func (h *Handler) handleListAccounts(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Handle case where no accounts are configured
+	if len(h.config.Accounts) == 0 {
+		return &protocol.CallToolResponse{
+			Content: []protocol.ToolContent{
+				{
+					Type: "text",
+					Text: "No email accounts configured.\n\n" +
+						"To configure accounts, set these environment variables:\n" +
+						"  - ACCOUNT_{name}_EMAIL       (e.g., ACCOUNT_WORK_EMAIL=user@example.com)\n" +
+						"  - ACCOUNT_{name}_PASSWORD    (e.g., ACCOUNT_WORK_PASSWORD=your_app_password)\n" +
+						"  - DEFAULT_ACCOUNT_ID         (e.g., DEFAULT_ACCOUNT_ID=WORK)\n\n" +
+						"For Gmail, use an App Password instead of your regular password.\n" +
+						"Visit: https://myaccount.google.com/apppasswords\n\n" +
+						"Example configuration:\n" +
+						"  ACCOUNT_WORK_EMAIL=user@example.com\n" +
+						"  ACCOUNT_WORK_PASSWORD=your_app_password\n" +
+						"  ACCOUNT_WORK_PROVIDER=gmail\n" +
+						"  DEFAULT_ACCOUNT_ID=WORK",
+				},
+			},
+		}, nil
+	}
+
 	type AccountInfo struct {
 		ID           string `json:"id"`
 		EmailAddress string `json:"email"`

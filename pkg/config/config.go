@@ -82,7 +82,11 @@ func LoadConfig() (*MultiAccountConfig, error) {
 	// Discover and load all accounts from environment variables
 	accountIDs := discoverAccountIDs()
 	if len(accountIDs) == 0 {
-		return nil, fmt.Errorf("no email accounts configured: please set ACCOUNT_{name}_EMAIL environment variables")
+		// Allow startup with no accounts configured
+		// Operations will fail with helpful error messages
+		fmt.Fprintf(os.Stderr, "Warning: No email accounts configured. Set ACCOUNT_{name}_EMAIL environment variables to use email tools.\n")
+		// Return minimal config with no accounts
+		return cfg, nil
 	}
 
 	// Build map of current accounts (accountID -> email) for migration detection
@@ -125,13 +129,23 @@ func LoadConfig() (*MultiAccountConfig, error) {
 
 	// Load default account ID
 	cfg.DefaultAccountID = os.Getenv("DEFAULT_ACCOUNT_ID")
-	if cfg.DefaultAccountID == "" {
-		return nil, fmt.Errorf("DEFAULT_ACCOUNT_ID environment variable is required")
-	}
 
-	// Validate default account exists
-	if _, ok := cfg.Accounts[cfg.DefaultAccountID]; !ok {
-		return nil, fmt.Errorf("default account %s not found in configured accounts", cfg.DefaultAccountID)
+	// Only validate if we have accounts configured
+	if len(cfg.Accounts) > 0 {
+		// If no default specified but we have accounts, use the first one
+		if cfg.DefaultAccountID == "" {
+			// Pick first account as default
+			for id := range cfg.Accounts {
+				cfg.DefaultAccountID = id
+				fmt.Fprintf(os.Stderr, "Info: Using %s as default account (DEFAULT_ACCOUNT_ID not set)\n", id)
+				break
+			}
+		} else {
+			// Validate specified default account exists
+			if _, ok := cfg.Accounts[cfg.DefaultAccountID]; !ok {
+				return nil, fmt.Errorf("default account %s not found in configured accounts", cfg.DefaultAccountID)
+			}
+		}
 	}
 
 	return cfg, nil

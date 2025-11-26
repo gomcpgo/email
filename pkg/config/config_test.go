@@ -20,10 +20,13 @@ func TestLoadConfig(t *testing.T) {
 	}
 	os.Unsetenv("DEFAULT_ACCOUNT_ID")
 
-	// Test missing account configuration
-	_, err := LoadConfig()
-	if err == nil {
-		t.Error("Expected error when no accounts are configured")
+	// Test missing account configuration - should now succeed
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Errorf("LoadConfig should succeed with no accounts, got error: %v", err)
+	}
+	if len(cfg.Accounts) != 0 {
+		t.Errorf("Expected 0 accounts, got %d", len(cfg.Accounts))
 	}
 
 	// Test successful load with Gmail account
@@ -31,7 +34,7 @@ func TestLoadConfig(t *testing.T) {
 	os.Setenv("ACCOUNT_Personal_PASSWORD", "test-password")
 	os.Setenv("DEFAULT_ACCOUNT_ID", "Personal")
 
-	cfg, err := LoadConfig()
+	cfg, err = LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
