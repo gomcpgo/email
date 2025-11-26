@@ -45,6 +45,11 @@ func (h *Handler) resolveAccountID(requestedID string) string {
 func (h *Handler) getAccountClients(accountID string) (*AccountClients, *config.AccountConfig, error) {
 	accountID = h.resolveAccountID(accountID)
 
+	// Check if any accounts are configured
+	if len(h.config.Accounts) == 0 {
+		return nil, nil, fmt.Errorf("no email accounts configured. Please set environment variables: ACCOUNT_{name}_EMAIL, ACCOUNT_{name}_PASSWORD, and DEFAULT_ACCOUNT_ID")
+	}
+
 	// Get account config
 	acctCfg, err := h.config.GetAccount(accountID)
 	if err != nil {
