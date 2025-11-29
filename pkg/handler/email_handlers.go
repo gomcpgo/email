@@ -208,7 +208,7 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	}
 
 	// Extract optional parameters
-	previewLength := 500
+	previewLength := 1000
 	if pl, ok := args["preview_length"].(float64); ok {
 		previewLength = int(pl)
 	}

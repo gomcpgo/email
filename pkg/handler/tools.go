@@ -90,7 +90,7 @@ func GetTools() []protocol.Tool {
 					},
 					"preview_length": {
 						"type": "integer",
-						"description": "Number of characters to include in the text preview. Default: 500"
+						"description": "Number of characters to include in the text preview. Default: 1000"
 					}
 				},
 				"required": ["message_id"]
