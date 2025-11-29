@@ -7,7 +7,9 @@ A Model Context Protocol (MCP) server for email operations via IMAP and SMTP. Su
 - **Multi-account support** - Manage multiple email accounts simultaneously
 - **List email folders** - Enumerate all available folders/labels
 - **Fetch email headers** - Get email metadata without downloading full content
-- **Fetch complete emails** - Download full email with body and attachments
+- **Fetch and cache emails** - Download emails with smart caching to prevent context overflow
+- **Read email body in chunks** - Pagination support for large emails
+- **HTML to text conversion** - Automatic conversion for LLM-friendly output
 - **Send emails** - Send emails with proper threading support for replies
 - **Fetch attachments** - Download and cache email attachments
 - **Draft management** - Create, edit, and manage email drafts
@@ -124,12 +126,11 @@ EMAIL_MAX_ATTACHMENT_SIZE=26214400     # 25MB max attachment size
 
 **Note:** All tools accept an optional `account_id` parameter to specify which account to use. If omitted, the default account (configured via `DEFAULT_ACCOUNT_ID`) is used.
 
-Example with account selection:
+### list_accounts
+Lists all configured email accounts with their IDs and which is the default.
+
 ```json
-{
-  "account_id": "work",
-  // ... other parameters
-}
+{}
 ```
 
 ### list_folders
@@ -142,7 +143,7 @@ Lists all available email folders with message counts.
 ```
 
 ### fetch_email_headers
-Fetches email headers without downloading full content.
+Fetches email headers (metadata) without downloading full content. Use this to list/search emails before fetching full content.
 
 ```json
 {
@@ -157,12 +158,79 @@ Fetches email headers without downloading full content.
 ```
 
 ### fetch_email
-Fetches a complete email with body and attachments.
+Fetches an email and caches it locally. Returns email metadata (headers, subject, from, to, date, attachments) and a text preview. The full body content is cached and can be read in chunks using `read_email_body`.
+
+This design prevents context overflow from large emails - the LLM receives metadata + preview, then decides whether to read the full body.
 
 ```json
 {
-  "message_id": "<CADsK8=example@mail.gmail.com>"
+  "message_id": "<CADsK8=example@mail.gmail.com>",
+  "preview_length": 1000  // Optional: characters in preview (default: 1000)
 }
+```
+
+**Response:**
+```json
+{
+  "message_id": "<CADsK8=example@mail.gmail.com>",
+  "from": "sender@example.com",
+  "to": ["recipient@example.com"],
+  "subject": "Email subject",
+  "date": "2024-01-20T10:30:00Z",
+  "attachments": [
+    {"filename": "report.pdf", "size": 245000}
+  ],
+  "body": {
+    "text_size": 5000,
+    "html_size": 15000,
+    "has_text": true,
+    "has_html": true,
+    "preview": "First 1000 characters of the email body..."
+  }
+}
+```
+
+### read_email_body
+Reads email body content from cache with pagination support. Call `fetch_email` first to cache the email.
+
+Default format is `text` which returns plain text. If the email only has HTML, it's automatically converted to text.
+
+```json
+{
+  "message_id": "<CADsK8=example@mail.gmail.com>",
+  "format": "text",      // Optional: "text" (default) or "raw_html"
+  "offset": 0,           // Optional: character position to start (default: 0)
+  "limit": 10000         // Optional: max characters to return (default: 10000)
+}
+```
+
+**Response:**
+```json
+{
+  "content": "The email body content...",
+  "format": "text",
+  "source": "text_body",  // or "html_converted" if HTML was converted
+  "total_size": 5000,
+  "offset": 0,
+  "limit": 10000,
+  "remaining": 0,
+  "is_complete": true
+}
+```
+
+**Pagination example for large emails:**
+```json
+// First chunk
+{"message_id": "...", "offset": 0, "limit": 10000}
+// Response: remaining: 15000, is_complete: false
+
+// Second chunk  
+{"message_id": "...", "offset": 10000, "limit": 10000}
+// Response: remaining: 5000, is_complete: false
+
+// Final chunk
+{"message_id": "...", "offset": 20000, "limit": 10000}
+// Response: remaining: 0, is_complete: true
 ```
 
 ### send_email
@@ -193,44 +261,67 @@ Downloads attachments from an email to cache.
 }
 ```
 
+### Draft Management Tools
+
+- **create_draft** - Create a new email draft
+- **list_drafts** - List all saved drafts
+- **get_draft** - Retrieve a specific draft
+- **update_draft** - Update an existing draft
+- **send_draft** - Send a draft and remove it
+- **delete_draft** - Delete a draft without sending
+- **send_all_drafts** - Send all drafts with configurable delay
+
 ## Cache Management
 
 The server caches emails and attachments for performance:
 
-- **Location**: `$FILES_ROOT/cache/`
-- **Max size**: 10MB (configurable)
-- **Expiry**: 1 day
+- **Location**: `$FILES_ROOT/{account_id}/cache/emails/`
+- **Max size**: 10MB per account (configurable)
+- **Expiry**: 96 hours (4 days)
 - **Eviction**: Oldest entries first
 
-Cached items:
-- Email bodies (YAML format)
-- Attachments (original format)
+### Cache Structure
 
-## Performance & Response Sizes
-
-Understanding response sizes helps optimize LLM token usage:
-
-### Response Size Comparison
-- **Email Headers**: ~430 chars/email (metadata only)
-- **Full Emails**: 7-80KB+ per email (13-200x larger)
-
-### Commands for Size Analysis
-```bash
-# Compare header vs full email sizes  
-./run.sh compare-sizes
-
-# Test response sizes with different limits
-./run.sh size-test 20
-
-# View detailed performance guide
-./run.sh performance-guide
+Each cached email is stored in its own directory:
+```
+cache/emails/{cache_id}/
+├── metadata.yaml      # Headers, sizes, attachment info
+├── body_text.txt      # Plain text body (if available)
+├── body_html.txt      # HTML body (if available)
+└── body_converted.txt # HTML converted to text (cached on first request)
 ```
 
+This structure allows:
+- Reading body content in chunks without loading entire file
+- Caching HTML-to-text conversion results
+- Efficient pagination for large emails
+
+## Performance & Token Optimization
+
+The email server is designed to minimize LLM token usage:
+
+### Two-Phase Email Reading
+
+1. **fetch_email** - Returns metadata + preview (~1-2KB)
+2. **read_email_body** - Returns full content in chunks (if needed)
+
+This prevents large emails (50KB+) from overwhelming the context window.
+
+### Response Size Comparison
+
+| Operation | Typical Size | Use Case |
+|-----------|--------------|----------|
+| Email Headers | ~400 chars/email | Listing, searching |
+| fetch_email | ~1-2KB | Metadata + preview |
+| read_email_body | Up to 10KB/chunk | Full content when needed |
+
 ### Recommendations
+
 - ✅ Use `fetch_email_headers` for listing/searching
-- ✅ Use `fetch_email` only when you need content
-- ⚠️ Avoid batch fetching full emails (memory intensive)
-- 📊 Headers: 100 emails = ~43KB | Full emails: 100 emails = 1-8MB
+- ✅ Use `fetch_email` to get metadata and preview
+- ✅ Only call `read_email_body` when full content is needed
+- ✅ Use pagination (`offset`/`limit`) for very large emails
+- ⚠️ Avoid fetching many full emails in one request
 
 ## Testing
 
@@ -251,13 +342,6 @@ export EMAIL_APP_PASSWORD=xxxx-xxxx-xxxx
 - BCC recipients are properly hidden
 - Cache files are stored with 0644 permissions
 
-## Limitations
-
-- Single email account per server instance
-- 25MB maximum attachment size
-- IMAP search capabilities vary by provider
-- No support for inline images in HTML emails (v1)
-
 ## Troubleshooting
 
 ### Authentication Failed
@@ -274,6 +358,10 @@ export EMAIL_APP_PASSWORD=xxxx-xxxx-xxxx
 - Run `./run.sh clear-cache` to reset
 - Check `FILES_ROOT` directory permissions
 - Verify disk space available
+
+### Email Not in Cache
+- Call `fetch_email` first before `read_email_body`
+- Cache expires after 96 hours - refetch if needed
 
 ## License
 

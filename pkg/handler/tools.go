@@ -76,7 +76,7 @@ func GetTools() []protocol.Tool {
 		},
 		{
 			Name:        "fetch_email",
-			Description: "Fetch a complete email with body and attachment list using its Message-ID. Use account_id parameter to specify which email account to query (call list_accounts first to see available accounts). Use max_body_length to limit the size of email bodies to avoid context overflow.",
+			Description: "Fetch an email and cache it locally. Returns email metadata (headers, subject, from, to, date, attachments) and a text preview. The full body content is cached and can be read in chunks using read_email_body. This design prevents context overflow from large emails.",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
@@ -88,13 +88,40 @@ func GetTools() []protocol.Tool {
 						"type": "string",
 						"description": "The Message-ID header value (e.g., '<CADsK8=example@mail.gmail.com>')"
 					},
-					"include_body": {
-						"type": "boolean",
-						"description": "Whether to include the full email body. If false, returns only headers and '[Body omitted]'. Default: true"
-					},
-					"max_body_length": {
+					"preview_length": {
 						"type": "integer",
-						"description": "Maximum number of characters to include in body/html_body fields. If the body exceeds this, it will be truncated. Default: 50000"
+						"description": "Number of characters to include in the text preview. Default: 1000"
+					}
+				},
+				"required": ["message_id"]
+			}`),
+		},
+		{
+			Name:        "read_email_body",
+			Description: "Read email body content from cache with pagination. Call fetch_email first to cache the email. Default format is 'text' which returns plain text (or HTML converted to text if no plain text exists). Use offset and limit for pagination of large emails.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"account_id": {
+						"type": "string",
+						"description": "Account ID to use. If not specified, uses the default account from DEFAULT_ACCOUNT_ID"
+					},
+					"message_id": {
+						"type": "string",
+						"description": "The Message-ID of the email (must have been fetched first using fetch_email)"
+					},
+					"format": {
+						"type": "string",
+						"enum": ["text", "raw_html"],
+						"description": "Content format: 'text' (default) returns plain text or HTML converted to text; 'raw_html' returns raw HTML"
+					},
+					"offset": {
+						"type": "integer",
+						"description": "Character position to start reading from. Default: 0"
+					},
+					"limit": {
+						"type": "integer",
+						"description": "Maximum characters to return. Default: 10000"
 					}
 				},
 				"required": ["message_id"]
