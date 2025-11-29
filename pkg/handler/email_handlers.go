@@ -9,6 +9,7 @@ import (
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"github.com/prasanthmj/email/pkg/email"
+	"github.com/prasanthmj/email/pkg/storage"
 )
 
 // handleListAccounts handles the list_accounts tool
@@ -190,13 +191,16 @@ func (h *Handler) handleFetchEmailHeaders(ctx context.Context, args map[string]i
 	}, nil
 }
 
-// handleFetchEmail handles the fetch_email tool
+// handleFetchEmail handles the fetch_email tool (enhanced version)
+// Fetches email to cache and returns metadata with a text preview.
+// Body content should be read using read_email_body tool.
 func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
 	// Extract account_id
 	var accountID string
 	if id, ok := args["account_id"].(string); ok {
 		accountID = id
 	}
+	accountID = h.resolveAccountID(accountID)
 
 	messageID, ok := args["message_id"].(string)
 	if !ok || messageID == "" {
@@ -204,69 +208,44 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	}
 
 	// Extract optional parameters
-	// max_body_length: maximum characters to include in body/html_body (default: 50000)
-	maxBodyLength := 50000
-	if maxLen, ok := args["max_body_length"].(float64); ok {
-		maxBodyLength = int(maxLen)
-	} else if maxLen, ok := args["max_body_length"].(int); ok {
-		maxBodyLength = maxLen
+	previewLength := 500
+	if pl, ok := args["preview_length"].(float64); ok {
+		previewLength = int(pl)
 	}
 
-	// include_body: whether to include full body (default: true)
-	includeBody := true
-	if incBody, ok := args["include_body"].(bool); ok {
-		includeBody = incBody
-	}
-
-	// Get account-specific storage
-	stor, err := h.getStorage(accountID)
+	// Get email cache
+	emailCache, err := h.getEmailCache(accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Try to load from cache first
-	cachedEmail, err := stor.LoadEmail(messageID)
-	if err == nil {
-		// Found in cache - apply size limits
-		cachedEmail = truncateEmailContent(cachedEmail, maxBodyLength, includeBody)
-
-		data, err := json.MarshalIndent(cachedEmail, "", "  ")
+	// Check if already cached
+	if !emailCache.IsCached(messageID) {
+		// Not in cache, fetch from server
+		imapClient, err := h.getIMAPClient(accountID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to format response: %w", err)
+			return nil, err
 		}
 
-		return &protocol.CallToolResponse{
-			Content: []protocol.ToolContent{
-				{
-					Type: "text",
-					Text: string(data),
-				},
-			},
-		}, nil
+		emailMsg, err := imapClient.FetchEmail(messageID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch email: %w", err)
+		}
+
+		// Save to cache with separate body files
+		if _, err := emailCache.SaveEmail(emailMsg, accountID); err != nil {
+			return nil, fmt.Errorf("failed to cache email: %w", err)
+		}
 	}
 
-	// Not in cache, fetch from server
-	imapClient, err := h.getIMAPClient(accountID)
+	// Get cache info (metadata + preview)
+	cacheInfo, err := emailCache.GetCacheInfo(messageID, previewLength)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get cache info: %w", err)
 	}
-
-	emailMsg, err := imapClient.FetchEmail(messageID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch email: %w", err)
-	}
-
-	// Save to cache
-	if err := stor.SaveEmail(emailMsg); err != nil {
-		// Log error but continue
-		fmt.Printf("Failed to cache email: %v\n", err)
-	}
-
-	// Apply size limits
-	emailMsg = truncateEmailContent(emailMsg, maxBodyLength, includeBody)
 
 	// Convert to JSON for response
-	data, err := json.MarshalIndent(emailMsg, "", "  ")
+	data, err := json.MarshalIndent(cacheInfo, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to format response: %w", err)
 	}
@@ -281,28 +260,89 @@ func (h *Handler) handleFetchEmail(ctx context.Context, args map[string]interfac
 	}, nil
 }
 
-// truncateEmailContent truncates email body content to the specified limit
-func truncateEmailContent(emailMsg *email.Email, maxBodyLength int, includeBody bool) *email.Email {
-	if !includeBody {
-		// Return minimal info without body
-		truncated := *emailMsg
-		truncated.Body = "[Body omitted]"
-		truncated.HTMLBody = ""
-		return &truncated
+// handleReadEmailBody handles the read_email_body tool
+// Reads email body content from cache with pagination support.
+// Default format is "text" which returns plain text (or HTML converted to text).
+func (h *Handler) handleReadEmailBody(ctx context.Context, args map[string]interface{}) (*protocol.CallToolResponse, error) {
+	// Extract account_id
+	var accountID string
+	if id, ok := args["account_id"].(string); ok {
+		accountID = id
+	}
+	accountID = h.resolveAccountID(accountID)
+
+	messageID, ok := args["message_id"].(string)
+	if !ok || messageID == "" {
+		return nil, fmt.Errorf("message_id parameter is required")
 	}
 
-	// Truncate body if it exceeds the limit
-	truncated := *emailMsg
-	if len(truncated.Body) > maxBodyLength {
-		truncated.Body = truncated.Body[:maxBodyLength] + fmt.Sprintf("\n\n[Content truncated. Original size: %d characters]", len(emailMsg.Body))
+	// Extract optional parameters
+	format := "text" // default to text
+	if f, ok := args["format"].(string); ok && f != "" {
+		format = f
 	}
 
-	// Truncate HTML body if it exceeds the limit
-	if len(truncated.HTMLBody) > maxBodyLength {
-		truncated.HTMLBody = truncated.HTMLBody[:maxBodyLength] + fmt.Sprintf("\n\n[Content truncated. Original size: %d characters]", len(emailMsg.HTMLBody))
+	// Validate format
+	if format != "text" && format != "raw_html" {
+		return nil, fmt.Errorf("invalid format: %s (must be 'text' or 'raw_html')", format)
 	}
 
-	return &truncated
+	var offset int64 = 0
+	if o, ok := args["offset"].(float64); ok {
+		offset = int64(o)
+	}
+
+	var limit int64 = 10000 // default 10k characters
+	if l, ok := args["limit"].(float64); ok {
+		limit = int64(l)
+	}
+
+	// Get email cache
+	emailCache, err := h.getEmailCache(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if email is cached
+	if !emailCache.IsCached(messageID) {
+		return nil, fmt.Errorf("email not in cache. Call fetch_email first with message_id: %s", messageID)
+	}
+
+	// Read body content
+	result, err := emailCache.ReadBody(messageID, format, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read email body: %w", err)
+	}
+
+	// Convert to JSON for response
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to format response: %w", err)
+	}
+
+	return &protocol.CallToolResponse{
+		Content: []protocol.ToolContent{
+			{
+				Type: "text",
+				Text: string(data),
+			},
+		},
+	}, nil
+}
+
+// getEmailCache returns the email cache for the account
+func (h *Handler) getEmailCache(accountID string) (*storage.EmailCache, error) {
+	clients, acctCfg, err := h.getAccountClients(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if clients.emailCache == nil {
+		// Get the files root from drafts dir (remove /drafts suffix)
+		filesRoot := acctCfg.DraftsDir[:len(acctCfg.DraftsDir)-len("/drafts")]
+		clients.emailCache = storage.NewEmailCache(filesRoot, h.config.CacheMaxSize)
+	}
+	return clients.emailCache, nil
 }
 
 // handleSendEmail handles the send_email tool

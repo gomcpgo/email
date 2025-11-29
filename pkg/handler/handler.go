@@ -17,6 +17,7 @@ type AccountClients struct {
 	attFetcher   *email.AttachmentFetcher
 	storage      *storage.Storage
 	cacheManager *storage.CacheManager
+	emailCache   *storage.EmailCache
 }
 
 // Handler handles MCP protocol operations
@@ -152,6 +153,8 @@ func (h *Handler) CallTool(ctx context.Context, req *protocol.CallToolRequest) (
 		return h.handleFetchEmailHeaders(ctx, req.Arguments)
 	case "fetch_email":
 		return h.handleFetchEmail(ctx, req.Arguments)
+	case "read_email_body":
+		return h.handleReadEmailBody(ctx, req.Arguments)
 	case "send_email":
 		return h.handleSendEmail(ctx, req.Arguments)
 	case "fetch_email_attachment":
