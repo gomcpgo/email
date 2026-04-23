@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 	emailHandler "github.com/prasanthmj/email/pkg/handler"
 	"github.com/prasanthmj/email/pkg/storage"
 )
+
+//go:embed icon.svg
+var iconSVG []byte
 
 func main() {
 	// Parse command line flags
@@ -264,7 +268,9 @@ func runMCPServer(cfg *config.MultiAccountConfig) error {
 	// Create and run server
 	srv := server.New(server.Options{
 		Name:     "email-mcp-server",
+		Title:    "Email",
 		Version:  "1.0.0",
+		Icons:    protocol.IconFromSVG(iconSVG),
 		Registry: registry,
 	})
 
